@@ -1,4 +1,5 @@
 const Room = require('../models/Room');
+const User = require('../models/User');
 const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../utils/vivox');
 
 function registerRoomHandlers(io, socket) {
@@ -8,14 +9,18 @@ function registerRoomHandlers(io, socket) {
 
   /**
    * Event: create_room
-   * Payload: { userId, userName, roomName, capacity, customRoomId, password, isPublic }
+   * Payload: { userId, userName, profileImageUrl, roomName, capacity, customRoomId, password, isPublic }
    */
   socket.on('create_room', async (payload = {}) => {
     try {
-      const { userId, userName, roomName = 'Bingo Room', capacity = 4, customRoomId, roomId: inputRoomId, password = '', isPublic } = payload;
+      const { userId, userName, profileImageUrl = '', roomName = 'Bingo Room', capacity = 4, customRoomId, roomId: inputRoomId, password = '', isPublic } = payload;
       if (!userId || !userName) {
         return sendError('create_room', 'userId and userName are required');
       }
+
+      const userProfile = await User.findOne({ userId: String(userId).trim() });
+      const trustedName = userProfile ? userProfile.name : userName;
+      const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(profileImageUrl).trim();
 
       let finalRoomId = String(customRoomId || inputRoomId || '').toUpperCase().trim();
 
@@ -47,14 +52,15 @@ function registerRoomHandlers(io, socket) {
         password: trimPassword,
         isPublic: roomIsPublic,
         creatorId: String(userId),
-        creatorName: userName,
+        creatorName: trustedName,
         capacity: Math.min(Math.max(Number(capacity) || 4, 2), 10),
         status: 'waiting',
         vivoxChannelUri,
         players: [
           {
             userId: String(userId),
-            name: userName,
+            name: trustedName,
+            profileImageUrl: trustedProfileImageUrl,
             socketId: socket.id,
             isCreator: true,
             isReady: true,
@@ -83,14 +89,18 @@ function registerRoomHandlers(io, socket) {
 
   /**
    * Event: join_room
-   * Payload: { roomId, userId, userName, password }
+   * Payload: { roomId, userId, userName, profileImageUrl, password }
    */
   socket.on('join_room', async (payload = {}) => {
     try {
-      const { roomId, userId, userName, password = '' } = payload;
+      const { roomId, userId, userName, profileImageUrl = '', password = '' } = payload;
       if (!roomId || !userId || !userName) {
         return sendError('join_room', 'roomId, userId, and userName are required');
       }
+
+      const userProfile = await User.findOne({ userId: String(userId).trim() });
+      const trustedName = userProfile ? userProfile.name : userName;
+      const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(profileImageUrl).trim();
 
       const formattedRoomId = String(roomId).toUpperCase().trim();
       const room = await Room.findOne({ roomId: formattedRoomId });
@@ -115,11 +125,15 @@ function registerRoomHandlers(io, socket) {
 
       if (existingPlayerIndex !== -1) {
         room.players[existingPlayerIndex].socketId = socket.id;
-        room.players[existingPlayerIndex].name = userName;
+        room.players[existingPlayerIndex].name = trustedName;
+        if (trustedProfileImageUrl) {
+          room.players[existingPlayerIndex].profileImageUrl = trustedProfileImageUrl;
+        }
       } else {
         room.players.push({
           userId: String(userId),
-          name: userName,
+          name: trustedName,
+          profileImageUrl: trustedProfileImageUrl,
           socketId: socket.id,
           isCreator: String(userId) === String(room.creatorId),
           isReady: false,
@@ -150,7 +164,7 @@ function registerRoomHandlers(io, socket) {
 
       socket.emit('room_joined', responsePayload);
       socket.to(formattedRoomId).emit('player_joined', {
-        player: { userId: String(userId), name: userName, socketId: socket.id },
+        player: { userId: String(userId), name: trustedName, profileImageUrl: trustedProfileImageUrl, socketId: socket.id },
         players: room.players,
         playersCount: room.players.length,
         capacity: room.capacity

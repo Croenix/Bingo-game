@@ -29,6 +29,7 @@ router.post('/', async (req, res, next) => {
     // Retrieve registered user profile if available to prevent name spoofing
     const userProfile = await User.findOne({ userId: String(creatorId).trim() });
     const trustedCreatorName = userProfile ? userProfile.name : String(creatorName).trim();
+    const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(req.body.profileImageUrl || '').trim();
 
     let finalRoomId = String(customRoomId || inputRoomId || '').toUpperCase().trim();
 
@@ -62,6 +63,7 @@ router.post('/', async (req, res, next) => {
         {
           userId: String(creatorId),
           name: trustedCreatorName,
+          profileImageUrl: trustedProfileImageUrl,
           isCreator: true,
           isReady: true,
           joinedAt: new Date()
@@ -151,6 +153,7 @@ router.post('/:roomId/join', async (req, res, next) => {
     // Retrieve registered user profile if available to prevent name spoofing
     const userProfile = await User.findOne({ userId: String(userId).trim() });
     const trustedPlayerName = userProfile ? userProfile.name : String(userName).trim();
+    const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(req.body.profileImageUrl || '').trim();
 
     const room = await Room.findOne({ roomId });
     if (!room) {
@@ -173,10 +176,14 @@ router.post('/:roomId/join', async (req, res, next) => {
 
     if (existingIndex !== -1) {
       room.players[existingIndex].name = trustedPlayerName;
+      if (trustedProfileImageUrl) {
+        room.players[existingIndex].profileImageUrl = trustedProfileImageUrl;
+      }
     } else {
       room.players.push({
         userId: String(userId),
         name: trustedPlayerName,
+        profileImageUrl: trustedProfileImageUrl,
         isCreator: String(userId) === String(room.creatorId),
         isReady: false,
         joinedAt: new Date()
@@ -196,7 +203,7 @@ router.post('/:roomId/join', async (req, res, next) => {
     const io = req.app.get('io');
     if (io) {
       io.to(roomId).emit('player_joined', {
-        player: { userId: String(userId), name: trustedPlayerName },
+        player: { userId: String(userId), name: trustedPlayerName, profileImageUrl: trustedProfileImageUrl },
         players: room.players,
         playersCount: room.players.length,
         capacity: room.capacity

@@ -4,6 +4,7 @@ const playerSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     name: { type: String, required: true },
+    profileImageUrl: { type: String, default: '' },
     socketId: { type: String, default: '' },
     isCreator: { type: Boolean, default: false },
     isReady: { type: Boolean, default: false },

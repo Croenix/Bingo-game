@@ -24,10 +24,14 @@ router.post('/', async (req, res, next) => {
     let user = await User.findOne({ gmailId });
 
     if (user) {
-      // Existing user update
+      // Existing user update: retain existing profileImageUrl unless a non-empty new URL is explicitly provided
       user.name = name;
       if (deviceId) user.deviceId = deviceId;
-      if (profileImageUrl !== undefined) user.profileImageUrl = profileImageUrl;
+      if (profileImageUrl && profileImageUrl.length > 0) {
+        user.profileImageUrl = profileImageUrl;
+      } else if (!user.profileImageUrl) {
+        user.profileImageUrl = generateDefaultAvatar(user.userId);
+      }
 
       // Backfill userId for legacy user if missing
       if (!user.userId) {
