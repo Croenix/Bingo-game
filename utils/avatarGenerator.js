@@ -1,15 +1,15 @@
-const crypto = require('crypto');
+const { getRandomProfilePicture } = require('./profilePictureManager');
 
 /**
- * Generate a random DiceBear Critters avatar URL with the 'boldPop' preset.
- * @param {string} [seed] - Optional seed (e.g. userId, email, or random string)
- * @returns {string} DiceBear avatar URL
+ * Select a random profile picture from profilePictures.json.
+ * Completely removed external DiceBear avatar generator API.
+ * @returns {string} Random profile picture URL from profilePictures.json
  */
-function generateDefaultAvatar(seed) {
-  const avatarSeed = seed || crypto.randomBytes(6).toString('hex');
-  return `https://api.dicebear.com/9.x/critters/svg?seed=${encodeURIComponent(avatarSeed)}&preset=boldPop`;
+function generateDefaultAvatar() {
+  return getRandomProfilePicture();
 }
 
 module.exports = {
-  generateDefaultAvatar
+  generateDefaultAvatar,
+  getRandomProfilePicture
 };

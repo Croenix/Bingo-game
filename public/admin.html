@@ -81,6 +81,10 @@
             <i class="fa-solid fa-door-open"></i>
             <span>Rooms & Vivox Tester</span>
           </button>
+          <button class="nav-item" data-tab="pictures">
+            <i class="fa-solid fa-images"></i>
+            <span>Profile Pictures (ImgBB)</span>
+          </button>
           <button class="nav-item" data-tab="options">
             <i class="fa-solid fa-sliders"></i>
             <span>Server Options & Tools</span>
@@ -621,6 +625,118 @@
                       </thead>
                       <tbody id="routesTableBody"></tbody>
                     </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- TAB 6: PROFILE PICTURES MANAGEMENT & IMGBB UPLOAD -->
+          <section id="picturesTab" class="tab-pane">
+            <div class="metrics-grid mb-3">
+              <div class="metric-card glass-card">
+                <div class="metric-icon purple"><i class="fa-solid fa-image"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Total Profile Pictures</span>
+                  <h3 class="metric-value" id="statTotalPictures">0</h3>
+                  <span class="metric-sub">Stored in profilePictures.json</span>
+                </div>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon cyan"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">ImgBB Storage API</span>
+                  <h3 class="metric-value badge-style">
+                    <span class="status-indicator active">Connected</span>
+                  </h3>
+                  <span class="metric-sub">Direct URL Generator</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="options-grid mb-3">
+              <!-- Upload Image via ImgBB -->
+              <div class="panel glass-panel">
+                <div class="panel-header flex-between">
+                  <h3><i class="fa-solid fa-cloud-arrow-up text-cyan"></i> Upload Profile Picture via ImgBB</h3>
+                  <span id="imgbbKeyStatusTag" class="badge-pill amber">Checking Key...</span>
+                </div>
+                <div class="panel-body">
+                  <!-- API Key Management -->
+                  <div class="form-group mb-3">
+                    <label for="imgbbApiKey"><i class="fa-solid fa-key text-amber"></i> Server ImgBB API Key</label>
+                    <div class="input-with-button">
+                      <input type="text" id="imgbbApiKey" placeholder="Enter ImgBB API Key (e.g. 5d89f7...)">
+                      <button type="button" id="saveImgbbKeyBtn" class="btn btn-outline-cyan btn-sm">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Key to Server (.env)
+                      </button>
+                    </div>
+                    <small class="text-dim">Key is saved in server <code>.env</code> file & persists across restarts. Free keys available at <a href="https://api.imgbb.com/" target="_blank" rel="noopener" style="color: var(--primary);">api.imgbb.com</a></small>
+                  </div>
+
+                  <form id="imgbbUploadForm">
+                    <!-- Drag and Drop Zone -->
+                    <div class="form-group">
+                      <label><i class="fa-solid fa-file-image text-purple"></i> Select or Drag & Drop Image File</label>
+                      <div id="dropZone" class="drop-zone">
+                        <input type="file" id="profilePicFile" accept="image/png, image/jpeg, image/webp, image/gif" class="file-input-hidden">
+                        <div class="drop-zone-content">
+                          <i class="fa-solid fa-cloud-arrow-up drop-zone-icon"></i>
+                          <h4>Drag & Drop image here, or <span>browse</span></h4>
+                          <p class="drop-zone-sub">Supports PNG, JPG, WEBP, GIF (up to 10MB)</p>
+                          <span class="paste-hint-badge"><i class="fa-solid fa-paste"></i> Tip: Press <strong>Ctrl + V</strong> anywhere to paste from clipboard!</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Image Preview Area -->
+                    <div id="imagePreviewBox" class="img-preview-box hidden mb-2">
+                      <img id="imagePreview" src="" alt="Selected image preview">
+                      <div class="preview-info-tag" id="previewInfoTag">Image selected</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block mt-2" id="uploadImgbbBtn">
+                      <i class="fa-solid fa-upload"></i> Upload Image to ImgBB & Save URL
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              <!-- Add Direct Image URL -->
+              <div class="panel glass-panel">
+                <div class="panel-header">
+                  <h3><i class="fa-solid fa-link text-amber"></i> Add Direct Image URL</h3>
+                </div>
+                <div class="panel-body">
+                  <form id="addDirectUrlForm">
+                    <div class="form-group">
+                      <label for="directImageUrl"><i class="fa-solid fa-globe text-cyan"></i> Direct Image URL *</label>
+                      <input type="url" id="directImageUrl" placeholder="https://i.ibb.co/example/avatar.png" required>
+                      <small class="text-dim">Paste any HTTPS direct image URL</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block mt-2">
+                      <i class="fa-solid fa-plus-circle"></i> Add URL to profilePictures.json
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <!-- Profile Pictures Gallery Grid -->
+            <div class="panel glass-panel full-width">
+              <div class="panel-header flex-between">
+                <h3><i class="fa-solid fa-images text-green"></i> Stored Profile Pictures Gallery (<span id="galleryCount">0</span>)</h3>
+                <button id="refreshPicturesBtn" class="btn btn-outline btn-sm">
+                  <i class="fa-solid fa-arrows-rotate"></i> Refresh Gallery
+                </button>
+              </div>
+              <div class="panel-body">
+                <div id="picturesGalleryGrid" class="pictures-grid">
+                  <div class="text-center py-4 full-width">
+                    <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+                    <p class="mt-2 text-sub">Loading profile pictures...</p>
                   </div>
                 </div>
               </div>

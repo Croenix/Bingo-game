@@ -20,7 +20,8 @@
     chalSearchDebounceTimer: null,
     deleteTargetId: null,
     deleteChallengeTargetId: null,
-    serverStartTime: null
+    serverStartTime: null,
+    selectedImageFile: null
   };
 
   // DOM Elements Selector Cache
@@ -182,6 +183,24 @@
     refreshRoomsBtn: document.getElementById('refreshRoomsBtn'),
     roomsTableBody: document.getElementById('roomsTableBody'),
 
+    // Profile Pictures Tab Elements
+    statTotalPictures: document.getElementById('statTotalPictures'),
+    imgbbUploadForm: document.getElementById('imgbbUploadForm'),
+    imgbbApiKey: document.getElementById('imgbbApiKey'),
+    imgbbKeyStatusTag: document.getElementById('imgbbKeyStatusTag'),
+    saveImgbbKeyBtn: document.getElementById('saveImgbbKeyBtn'),
+    dropZone: document.getElementById('dropZone'),
+    profilePicFile: document.getElementById('profilePicFile'),
+    imagePreviewBox: document.getElementById('imagePreviewBox'),
+    imagePreview: document.getElementById('imagePreview'),
+    previewInfoTag: document.getElementById('previewInfoTag'),
+    uploadImgbbBtn: document.getElementById('uploadImgbbBtn'),
+    addDirectUrlForm: document.getElementById('addDirectUrlForm'),
+    directImageUrl: document.getElementById('directImageUrl'),
+    refreshPicturesBtn: document.getElementById('refreshPicturesBtn'),
+    picturesGalleryGrid: document.getElementById('picturesGalleryGrid'),
+    galleryCount: document.getElementById('galleryCount'),
+
     toastContainer: document.getElementById('toastContainer')
   };
 
@@ -331,6 +350,7 @@
       users: { title: 'User Control & Rewards', sub: 'Manage accounts, update coins, gems, and profile details' },
       challenges: { title: 'Challenges Management', sub: 'Create and configure game room challenges' },
       rooms: { title: 'Multiplayer Rooms & Vivox', sub: 'Create test rooms, manage active games, and generate Vivox tokens' },
+      pictures: { title: 'Profile Pictures (ImgBB)', sub: 'Upload images via ImgBB or add direct URLs to profilePictures.json' },
       options: { title: 'Server Options & Tools', sub: 'Diagnostic controls, system settings & API tester' }
     };
     const current = titles[tabId] || titles.dashboard;
@@ -341,6 +361,7 @@
     if (tabId === 'users') fetchUsers();
     if (tabId === 'challenges') fetchChallenges();
     if (tabId === 'rooms') fetchRooms();
+    if (tabId === 'pictures') fetchProfilePictures();
     if (tabId === 'options') loadServerOptions();
   }
 
@@ -1360,6 +1381,282 @@
           handleEndRoom(deleteBtn.dataset.id);
         }
       });
+    }
+
+    // Profile Pictures Events
+    if (el.saveImgbbKeyBtn) el.saveImgbbKeyBtn.addEventListener('click', saveServerImgbbKey);
+
+    if (el.profilePicFile) {
+      el.profilePicFile.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) displayFilePreview(file, 'Selected file');
+      });
+    }
+
+    // Drag and Drop Zone Events
+    if (el.dropZone) {
+      ['dragenter', 'dragover'].forEach(eventName => {
+        el.dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          el.dropZone.classList.add('drag-over');
+        }, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        el.dropZone.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          el.dropZone.classList.remove('drag-over');
+        }, false);
+      });
+
+      el.dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files && files.length > 0) {
+          const file = files[0];
+          if (file.type.startsWith('image/')) {
+            displayFilePreview(file, 'Dropped image');
+            showToast('Image file dropped!', 'info');
+          } else {
+            showToast('Please drop an image file (PNG, JPG, WEBP, GIF).', 'error');
+          }
+        }
+      });
+    }
+
+    // Global Clipboard Paste Event (Ctrl + V)
+    window.addEventListener('paste', (e) => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+          const blob = item.getAsFile();
+          if (blob) {
+            displayFilePreview(blob, 'Pasted from clipboard');
+            showToast('Image pasted from clipboard!', 'success');
+            if (state.activeTab !== 'pictures') {
+              switchTab('pictures');
+            }
+          }
+          break;
+        }
+      }
+    });
+
+    if (el.imgbbUploadForm) el.imgbbUploadForm.addEventListener('submit', handleImgbbUpload);
+    if (el.addDirectUrlForm) el.addDirectUrlForm.addEventListener('submit', handleAddDirectUrl);
+    if (el.refreshPicturesBtn) el.refreshPicturesBtn.addEventListener('click', fetchProfilePictures);
+
+    if (el.picturesGalleryGrid) {
+      el.picturesGalleryGrid.addEventListener('click', (e) => {
+        const delBtn = e.target.closest('[data-action="delete-picture"]');
+        if (delBtn) {
+          handleDeletePicture(delBtn.dataset.url);
+        }
+      });
+    }
+  }
+
+  // ==================== PROFILE PICTURES MANAGEMENT ====================
+
+  async function fetchServerImgbbKey() {
+    const { ok, data } = await apiRequest('/api/admin/imgbb-key');
+    if (ok) {
+      if (data.apiKey && el.imgbbApiKey) {
+        el.imgbbApiKey.value = data.apiKey;
+      }
+      if (el.imgbbKeyStatusTag) {
+        if (data.hasKey) {
+          el.imgbbKeyStatusTag.textContent = 'Saved on Server (.env)';
+          el.imgbbKeyStatusTag.className = 'badge-pill green';
+        } else {
+          el.imgbbKeyStatusTag.textContent = 'Key Not Set';
+          el.imgbbKeyStatusTag.className = 'badge-pill amber';
+        }
+      }
+    }
+  }
+
+  async function saveServerImgbbKey() {
+    const apiKey = el.imgbbApiKey.value.trim();
+    if (!apiKey) {
+      showToast('Please enter an ImgBB API key to save.', 'error');
+      return;
+    }
+
+    showToast('Saving API key to server .env...', 'info');
+    const { ok, data } = await apiRequest('/api/admin/imgbb-key', 'POST', { apiKey });
+    if (ok) {
+      showToast('ImgBB API key saved to server .env file!', 'success');
+      localStorage.setItem('imgbb_api_key', apiKey);
+      fetchServerImgbbKey();
+    } else {
+      showToast(data.error || 'Failed to save ImgBB API key', 'error');
+    }
+  }
+
+  function displayFilePreview(file, sourceLabel = 'Selected image') {
+    if (!file || !el.imagePreview || !el.imagePreviewBox) return;
+
+    state.selectedImageFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      el.imagePreview.src = e.target.result;
+      if (el.previewInfoTag) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        el.previewInfoTag.textContent = `✓ ${sourceLabel}: ${file.name || 'image'} (${sizeMB} MB)`;
+      }
+      el.imagePreviewBox.classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function fetchProfilePictures() {
+    fetchServerImgbbKey();
+    if (!el.picturesGalleryGrid) return;
+    el.picturesGalleryGrid.innerHTML = `
+      <div class="text-center py-4 full-width">
+        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: var(--primary);"></i>
+        <p class="mt-2 text-sub">Loading profile pictures...</p>
+      </div>
+    `;
+
+    const { ok, data } = await apiRequest('/api/admin/profile-pictures');
+    if (!ok) {
+      el.picturesGalleryGrid.innerHTML = `
+        <div class="text-center py-4 full-width text-danger">
+          <i class="fa-solid fa-triangle-exclamation fa-2x"></i>
+          <p class="mt-2">${data.error || 'Failed to load profile pictures'}</p>
+        </div>
+      `;
+      return;
+    }
+
+    renderPicturesGallery(data.pictures || []);
+  }
+
+  function renderPicturesGallery(pictures) {
+    if (el.statTotalPictures) el.statTotalPictures.textContent = pictures.length.toLocaleString();
+    if (el.galleryCount) el.galleryCount.textContent = pictures.length.toLocaleString();
+
+    if (pictures.length === 0) {
+      el.picturesGalleryGrid.innerHTML = `
+        <div class="text-center py-4 full-width">
+          <i class="fa-solid fa-image fa-3x" style="color: var(--text-dim);"></i>
+          <p class="mt-2 text-sub">No profile pictures uploaded yet. Drag & drop an image, paste from clipboard, or add a direct URL!</p>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '';
+    pictures.forEach((url, idx) => {
+      const encodedUrl = encodeURIComponent(url);
+      html += `
+        <div class="picture-card">
+          <div class="picture-thumb">
+            <img src="${escapeHtml(url)}" alt="Profile picture ${idx + 1}" onerror="this.src='https://via.placeholder.com/200?text=Image+Error'">
+          </div>
+          <div class="picture-footer">
+            <div class="picture-url-box" title="${escapeHtml(url)}">
+              <span class="picture-url-text">${escapeHtml(url)}</span>
+              <button type="button" class="btn-icon text-cyan" title="Copy URL" onclick="navigator.clipboard.writeText('${escapeHtml(url)}'); showToast('Image URL copied!', 'info');">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+            <button type="button" class="btn btn-outline-danger btn-sm btn-block" data-action="delete-picture" data-url="${encodedUrl}">
+              <i class="fa-solid fa-trash"></i> Remove Image
+            </button>
+          </div>
+        </div>
+      `;
+    });
+
+    el.picturesGalleryGrid.innerHTML = html;
+  }
+
+  async function handleImgbbUpload(e) {
+    e.preventDefault();
+    const file = state.selectedImageFile || (el.profilePicFile ? el.profilePicFile.files[0] : null);
+    const apiKey = el.imgbbApiKey ? el.imgbbApiKey.value.trim() : '';
+
+    if (!file) {
+      showToast('Please select, drop, or paste an image file to upload.', 'error');
+      return;
+    }
+
+    const originalBtnHtml = el.uploadImgbbBtn.innerHTML;
+    el.uploadImgbbBtn.disabled = true;
+    el.uploadImgbbBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Uploading to ImgBB...';
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = reader.result;
+        const { ok, data } = await apiRequest('/api/admin/profile-pictures/upload-imgbb', 'POST', {
+          image: base64Data,
+          apiKey: apiKey
+        });
+
+        el.uploadImgbbBtn.disabled = false;
+        el.uploadImgbbBtn.innerHTML = originalBtnHtml;
+
+        if (ok) {
+          showToast('Image uploaded to ImgBB and saved!', 'success');
+          state.selectedImageFile = null;
+          if (el.profilePicFile) el.profilePicFile.value = '';
+          if (el.imagePreviewBox) el.imagePreviewBox.classList.add('hidden');
+          fetchProfilePictures();
+        } else {
+          showToast(data.error || 'ImgBB upload failed', 'error');
+        }
+      };
+      reader.onerror = () => {
+        el.uploadImgbbBtn.disabled = false;
+        el.uploadImgbbBtn.innerHTML = originalBtnHtml;
+        showToast('Failed to read selected file', 'error');
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      el.uploadImgbbBtn.disabled = false;
+      el.uploadImgbbBtn.innerHTML = originalBtnHtml;
+      showToast(err.message || 'Upload error', 'error');
+    }
+  }
+
+  async function handleAddDirectUrl(e) {
+    e.preventDefault();
+    const url = el.directImageUrl.value.trim();
+    if (!url) {
+      showToast('Please enter a valid image URL.', 'error');
+      return;
+    }
+
+    const { ok, data } = await apiRequest('/api/admin/profile-pictures', 'POST', { url });
+    if (ok) {
+      showToast('Direct image URL saved successfully!', 'success');
+      el.directImageUrl.value = '';
+      fetchProfilePictures();
+    } else {
+      showToast(data.error || 'Failed to add image URL', 'error');
+    }
+  }
+
+  async function handleDeletePicture(encodedUrl) {
+    const url = decodeURIComponent(encodedUrl);
+    if (!confirm('Are you sure you want to remove this profile picture URL from profilePictures.json?')) {
+      return;
+    }
+
+    const { ok, data } = await apiRequest('/api/admin/profile-pictures', 'DELETE', { url });
+    if (ok) {
+      showToast('Profile picture removed successfully', 'success');
+      fetchProfilePictures();
+    } else {
+      showToast(data.error || 'Failed to delete profile picture', 'error');
     }
   }
 

@@ -7,6 +7,13 @@ const Challenge = require('../models/Challenge');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { generateUniqueUserId } = require('../utils/userIdGenerator');
 const { generateDefaultAvatar } = require('../utils/avatarGenerator');
+const {
+  getProfilePictures,
+  addProfilePicture,
+  deleteProfilePicture,
+  uploadToImgBB
+} = require('../utils/profilePictureManager');
+const { updateEnvVariable } = require('../utils/envManager');
 const router = express.Router();
 
 // Admin Login
@@ -432,6 +439,77 @@ router.delete('/challenges/:id', requireAdmin, async (req, res, next) => {
   } catch (e) {
     if (e.name === 'CastError') return res.status(400).json({ error: 'Invalid challenge ID' });
     next(e);
+  }
+});
+
+// ==================== PROFILE PICTURE MANAGEMENT ROUTES ====================
+
+// List all profile pictures
+router.get('/profile-pictures', requireAdmin, (req, res, next) => {
+  try {
+    const pictures = getProfilePictures();
+    res.json({ ok: true, pictures, total: pictures.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Add direct image URL to profilePictures.json
+router.post('/profile-pictures', requireAdmin, (req, res, next) => {
+  try {
+    const url = String(req.body.url || '').trim();
+    if (!url) return res.status(400).json({ error: 'Image URL is required' });
+    const pictures = addProfilePicture(url);
+    res.json({ ok: true, message: 'Profile picture URL added successfully', pictures, total: pictures.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Upload image to ImgBB and append URL to profilePictures.json
+router.post('/profile-pictures/upload-imgbb', requireAdmin, async (req, res, next) => {
+  try {
+    const image = req.body.image;
+    const apiKey = req.body.apiKey;
+    if (!image) return res.status(400).json({ error: 'Image data is required' });
+    const uploadedUrl = await uploadToImgBB(image, apiKey);
+    const pictures = getProfilePictures();
+    res.json({ ok: true, message: 'Image uploaded to ImgBB successfully', url: uploadedUrl, pictures, total: pictures.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'Failed to upload image to ImgBB' });
+  }
+});
+
+// Delete profile picture URL from profilePictures.json
+router.delete('/profile-pictures', requireAdmin, (req, res, next) => {
+  try {
+    const url = String(req.body.url || '').trim();
+    if (!url) return res.status(400).json({ error: 'Image URL is required' });
+    const pictures = deleteProfilePicture(url);
+    res.json({ ok: true, message: 'Profile picture removed successfully', pictures, total: pictures.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Fetch current server ImgBB API Key
+router.get('/imgbb-key', requireAdmin, (req, res, next) => {
+  try {
+    const apiKey = String(process.env.IMGBB_API_KEY || '').trim();
+    res.json({ ok: true, apiKey, hasKey: Boolean(apiKey) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Save and persist server ImgBB API Key in .env file
+router.post('/imgbb-key', requireAdmin, (req, res, next) => {
+  try {
+    const apiKey = String(req.body.apiKey || '').trim();
+    updateEnvVariable('IMGBB_API_KEY', apiKey);
+    res.json({ ok: true, message: 'Server ImgBB API Key updated and saved to .env', apiKey, hasKey: Boolean(apiKey) });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Failed to update ImgBB API Key' });
   }
 });
 
