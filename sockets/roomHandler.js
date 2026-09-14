@@ -1,5 +1,6 @@
 const Room = require('../models/Room');
 const User = require('../models/User');
+const { generateUniqueRoomId } = require('../utils/roomIdGenerator');
 const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../utils/vivox');
 
 function registerRoomHandlers(io, socket) {
@@ -18,8 +19,9 @@ function registerRoomHandlers(io, socket) {
         return sendError('create_room', 'userId and userName are required');
       }
 
-      const userProfile = await User.findOne({ userId: String(userId).trim() });
-      const trustedName = userProfile ? userProfile.name : userName;
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const userProfile = await User.findOne({ userId: formattedUserId });
+      const trustedName = userProfile ? userProfile.name : String(userName).trim();
       const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(profileImageUrl).trim();
 
       let finalRoomId = String(customRoomId || inputRoomId || '').toUpperCase().trim();
@@ -30,16 +32,14 @@ function registerRoomHandlers(io, socket) {
           return sendError('create_room', `Room ID '${finalRoomId}' is already taken`);
         }
       } else {
-        // Generate random 6-character uppercase room code
-        finalRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        finalRoomId = await generateUniqueRoomId(Room);
       }
 
       const trimPassword = String(password).trim();
-      // Room is public if explicitly set to true OR if password is empty
       const roomIsPublic = isPublic !== undefined ? Boolean(isPublic) : (trimPassword.length === 0);
 
       const vivoxChannelUri = getVivoxChannelUri(finalRoomId);
-      const vivoxUserUri = getVivoxUserUri(String(userId));
+      const vivoxUserUri = getVivoxUserUri(formattedUserId);
       const vivoxToken = generateVivoxToken({
         userUri: vivoxUserUri,
         action: 'join',
@@ -48,17 +48,17 @@ function registerRoomHandlers(io, socket) {
 
       const newRoom = new Room({
         roomId: finalRoomId,
-        name: roomName,
+        name: String(roomName).trim(),
         password: trimPassword,
         isPublic: roomIsPublic,
-        creatorId: String(userId),
+        creatorId: formattedUserId,
         creatorName: trustedName,
         capacity: Math.min(Math.max(Number(capacity) || 4, 2), 10),
         status: 'waiting',
         vivoxChannelUri,
         players: [
           {
-            userId: String(userId),
+            userId: formattedUserId,
             name: trustedName,
             profileImageUrl: trustedProfileImageUrl,
             socketId: socket.id,
@@ -98,11 +98,13 @@ function registerRoomHandlers(io, socket) {
         return sendError('join_room', 'roomId, userId, and userName are required');
       }
 
-      const userProfile = await User.findOne({ userId: String(userId).trim() });
-      const trustedName = userProfile ? userProfile.name : userName;
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+
+      const userProfile = await User.findOne({ userId: formattedUserId });
+      const trustedName = userProfile ? userProfile.name : String(userName).trim();
       const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(profileImageUrl).trim();
 
-      const formattedRoomId = String(roomId).toUpperCase().trim();
       const room = await Room.findOne({ roomId: formattedRoomId });
       if (!room) {
         return sendError('join_room', 'Room not found');
@@ -112,40 +114,64 @@ function registerRoomHandlers(io, socket) {
         return sendError('join_room', 'Room has already finished');
       }
 
-      // Check Password protection
       if (room.password && room.password !== String(password).trim()) {
         return sendError('join_room', 'Invalid room password');
       }
 
-      // Check if user is already in room
-      const existingPlayerIndex = room.players.findIndex(p => p.userId === String(userId));
-      if (existingPlayerIndex === -1 && room.players.length >= room.capacity) {
-        return sendError('join_room', 'Room capacity limit reached');
-      }
+      const existingPlayer = room.players.find(p => p.userId === formattedUserId);
 
-      if (existingPlayerIndex !== -1) {
-        room.players[existingPlayerIndex].socketId = socket.id;
-        room.players[existingPlayerIndex].name = trustedName;
-        if (trustedProfileImageUrl) {
-          room.players[existingPlayerIndex].profileImageUrl = trustedProfileImageUrl;
-        }
+      let updatedRoom;
+      if (existingPlayer) {
+        // Update existing player socketId and profile
+        updatedRoom = await Room.findOneAndUpdate(
+          { roomId: formattedRoomId, 'players.userId': formattedUserId },
+          {
+            $set: {
+              'players.$.socketId': socket.id,
+              'players.$.name': trustedName,
+              'players.$.profileImageUrl': trustedProfileImageUrl || existingPlayer.profileImageUrl
+            }
+          },
+          { new: true }
+        );
       } else {
-        room.players.push({
-          userId: String(userId),
-          name: trustedName,
-          profileImageUrl: trustedProfileImageUrl,
-          socketId: socket.id,
-          isCreator: String(userId) === String(room.creatorId),
-          isReady: false,
-          joinedAt: new Date()
-        });
+        // Atomic push with capacity check directly inside query filter
+        updatedRoom = await Room.findOneAndUpdate(
+          {
+            roomId: formattedRoomId,
+            status: 'waiting',
+            'players.userId': { $ne: formattedUserId },
+            $expr: { $lt: [{ $size: '$players' }, '$capacity'] }
+          },
+          {
+            $push: {
+              players: {
+                userId: formattedUserId,
+                name: trustedName,
+                profileImageUrl: trustedProfileImageUrl,
+                socketId: socket.id,
+                isCreator: formattedUserId === room.creatorId,
+                isReady: false,
+                joinedAt: new Date()
+              }
+            }
+          },
+          { new: true }
+        );
+
+        if (!updatedRoom) {
+          const currentRoom = await Room.findOne({ roomId: formattedRoomId });
+          if (currentRoom && currentRoom.players.length >= currentRoom.capacity) {
+            return sendError('join_room', 'Room capacity limit reached');
+          }
+          return sendError('join_room', 'Unable to join room');
+        }
       }
 
-      await room.save();
       socket.join(formattedRoomId);
 
-      const vivoxChannelUri = room.vivoxChannelUri || getVivoxChannelUri(formattedRoomId);
-      const vivoxUserUri = getVivoxUserUri(String(userId));
+      const vivoxChannelUri = updatedRoom.vivoxChannelUri || getVivoxChannelUri(formattedRoomId);
+      const vivoxUserUri = getVivoxUserUri(formattedUserId);
       const vivoxToken = generateVivoxToken({
         userUri: vivoxUserUri,
         action: 'join',
@@ -154,7 +180,7 @@ function registerRoomHandlers(io, socket) {
 
       const responsePayload = {
         ok: true,
-        room,
+        room: updatedRoom,
         vivox: {
           token: vivoxToken,
           channelUri: vivoxChannelUri,
@@ -164,10 +190,10 @@ function registerRoomHandlers(io, socket) {
 
       socket.emit('room_joined', responsePayload);
       socket.to(formattedRoomId).emit('player_joined', {
-        player: { userId: String(userId), name: trustedName, profileImageUrl: trustedProfileImageUrl, socketId: socket.id },
-        players: room.players,
-        playersCount: room.players.length,
-        capacity: room.capacity
+        player: { userId: formattedUserId, name: trustedName, profileImageUrl: trustedProfileImageUrl, socketId: socket.id },
+        players: updatedRoom.players,
+        playersCount: updatedRoom.players.length,
+        capacity: updatedRoom.capacity
       });
     } catch (err) {
       console.error('Socket join_room error:', err);
@@ -184,28 +210,45 @@ function registerRoomHandlers(io, socket) {
       const { roomId, userId } = payload;
       if (!roomId || !userId) return;
 
+      const formattedUserId = String(userId).trim().toUpperCase();
       const formattedRoomId = String(roomId).toUpperCase().trim();
       const room = await Room.findOne({ roomId: formattedRoomId });
       if (!room) return;
 
-      const isCreator = String(room.creatorId) === String(userId);
+      socket.leave(formattedRoomId);
+      room.players = room.players.filter(p => p.userId !== formattedUserId);
 
-      if (isCreator) {
+      if (room.players.length === 0) {
         await Room.deleteOne({ roomId: formattedRoomId });
         io.to(formattedRoomId).emit('room_deleted', {
           roomId: formattedRoomId,
-          reason: 'Room creator has exited the room'
+          reason: 'All players left the room'
         });
         io.in(formattedRoomId).socketsLeave(formattedRoomId);
       } else {
-        room.players = room.players.filter(p => p.userId !== String(userId));
+        let hostMigrated = false;
+        if (room.creatorId === formattedUserId) {
+          room.players[0].isCreator = true;
+          room.creatorId = room.players[0].userId;
+          room.creatorName = room.players[0].name;
+          hostMigrated = true;
+        }
+
         await room.save();
-        socket.leave(formattedRoomId);
-        socket.to(formattedRoomId).emit('player_left', {
-          userId: String(userId),
+
+        io.to(formattedRoomId).emit('player_left', {
+          userId: formattedUserId,
           players: room.players,
-          playersCount: room.players.length
+          playersCount: room.players.length,
+          newCreatorId: room.creatorId
         });
+
+        if (hostMigrated) {
+          io.to(formattedRoomId).emit('host_changed', {
+            roomId: formattedRoomId,
+            newHost: { userId: room.creatorId, name: room.creatorName }
+          });
+        }
       }
     } catch (err) {
       console.error('Socket leave_room error:', err);
@@ -219,27 +262,38 @@ function registerRoomHandlers(io, socket) {
   socket.on('end_game', async (payload = {}) => {
     try {
       const { roomId, userId, gameResults = {} } = payload;
-      if (!roomId) return;
+      if (!roomId || !userId) {
+        return sendError('end_game', 'roomId and userId are required to end game');
+      }
 
+      const formattedUserId = String(userId).trim().toUpperCase();
       const formattedRoomId = String(roomId).toUpperCase().trim();
       const room = await Room.findOne({ roomId: formattedRoomId });
-      if (!room) return;
+      if (!room) {
+        return sendError('end_game', 'Room not found');
+      }
+
+      // Authorization Check: Only room creator can trigger end_game
+      if (room.creatorId !== formattedUserId) {
+        return sendError('end_game', 'Unauthorized: Only the room creator can end the game');
+      }
 
       await Room.deleteOne({ roomId: formattedRoomId });
 
       io.to(formattedRoomId).emit('game_ended', {
         roomId: formattedRoomId,
-        endedBy: userId,
+        endedBy: formattedUserId,
         results: gameResults,
         message: 'Game ended and room deleted'
       });
       io.to(formattedRoomId).emit('room_deleted', {
         roomId: formattedRoomId,
-        reason: 'Game ended'
+        reason: 'Game ended by room creator'
       });
       io.in(formattedRoomId).socketsLeave(formattedRoomId);
     } catch (err) {
       console.error('Socket end_game error:', err);
+      sendError('end_game', err.message || 'Failed to end game');
     }
   });
 
@@ -254,22 +308,43 @@ function registerRoomHandlers(io, socket) {
         const player = room.players.find(p => p.socketId === socket.id);
         if (!player) continue;
 
-        if (player.isCreator || String(room.creatorId) === String(player.userId)) {
-          await Room.deleteOne({ roomId: room.roomId });
-          io.to(room.roomId).emit('room_deleted', {
-            roomId: room.roomId,
-            reason: 'Creator disconnected from room'
+        const formattedUserId = player.userId;
+        const formattedRoomId = room.roomId;
+
+        room.players = room.players.filter(p => p.socketId !== socket.id);
+
+        if (room.players.length === 0) {
+          await Room.deleteOne({ roomId: formattedRoomId });
+          io.to(formattedRoomId).emit('room_deleted', {
+            roomId: formattedRoomId,
+            reason: 'All players disconnected from room'
           });
-          io.in(room.roomId).socketsLeave(room.roomId);
+          io.in(formattedRoomId).socketsLeave(formattedRoomId);
         } else {
-          room.players = room.players.filter(p => p.socketId !== socket.id);
+          let hostMigrated = false;
+          if (room.creatorId === formattedUserId) {
+            room.players[0].isCreator = true;
+            room.creatorId = room.players[0].userId;
+            room.creatorName = room.players[0].name;
+            hostMigrated = true;
+          }
+
           await room.save();
-          io.to(room.roomId).emit('player_left', {
-            userId: player.userId,
+
+          io.to(formattedRoomId).emit('player_left', {
+            userId: formattedUserId,
             socketId: socket.id,
             players: room.players,
-            playersCount: room.players.length
+            playersCount: room.players.length,
+            newCreatorId: room.creatorId
           });
+
+          if (hostMigrated) {
+            io.to(formattedRoomId).emit('host_changed', {
+              roomId: formattedRoomId,
+              newHost: { userId: room.creatorId, name: room.creatorName }
+            });
+          }
         }
       }
     } catch (err) {

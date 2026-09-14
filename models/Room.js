@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const playerSchema = new mongoose.Schema(
   {
-    userId: { type: String, required: true },
+    userId: { type: String, required: true, uppercase: true, trim: true },
     name: { type: String, required: true },
     profileImageUrl: { type: String, default: '' },
     socketId: { type: String, default: '' },
@@ -41,6 +41,7 @@ const roomSchema = new mongoose.Schema(
     creatorId: {
       type: String,
       required: true,
+      uppercase: true,
       trim: true
     },
     creatorName: {

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Room = require('../models/Room');
 const User = require('../models/User');
+const { generateUniqueRoomId } = require('../utils/roomIdGenerator');
 const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../utils/vivox');
 
 /**
@@ -26,8 +27,10 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'creatorId and creatorName are required' });
     }
 
+    const formattedCreatorId = String(creatorId).trim().toUpperCase();
+
     // Retrieve registered user profile if available to prevent name spoofing
-    const userProfile = await User.findOne({ userId: String(creatorId).trim() });
+    const userProfile = await User.findOne({ userId: formattedCreatorId });
     const trustedCreatorName = userProfile ? userProfile.name : String(creatorName).trim();
     const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(req.body.profileImageUrl || '').trim();
 
@@ -39,7 +42,7 @@ router.post('/', async (req, res, next) => {
         return res.status(400).json({ error: `Room ID '${finalRoomId}' already exists` });
       }
     } else {
-      finalRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      finalRoomId = await generateUniqueRoomId(Room);
     }
 
     const trimPassword = String(password).trim();
@@ -54,14 +57,14 @@ router.post('/', async (req, res, next) => {
       name: String(name).trim(),
       password: trimPassword,
       isPublic: roomIsPublic,
-      creatorId: String(creatorId),
+      creatorId: formattedCreatorId,
       creatorName: trustedCreatorName,
       capacity: maxCap,
       status: 'waiting',
       vivoxChannelUri,
       players: [
         {
-          userId: String(creatorId),
+          userId: formattedCreatorId,
           name: trustedCreatorName,
           profileImageUrl: trustedProfileImageUrl,
           isCreator: true,
@@ -73,7 +76,7 @@ router.post('/', async (req, res, next) => {
 
     await room.save();
 
-    const vivoxUserUri = getVivoxUserUri(String(creatorId));
+    const vivoxUserUri = getVivoxUserUri(formattedCreatorId);
     const vivoxToken = generateVivoxToken({
       userUri: vivoxUserUri,
       action: 'join',
@@ -150,8 +153,10 @@ router.post('/:roomId/join', async (req, res, next) => {
       return res.status(400).json({ error: 'userId and userName are required' });
     }
 
+    const formattedUserId = String(userId).trim().toUpperCase();
+
     // Retrieve registered user profile if available to prevent name spoofing
-    const userProfile = await User.findOne({ userId: String(userId).trim() });
+    const userProfile = await User.findOne({ userId: formattedUserId });
     const trustedPlayerName = userProfile ? userProfile.name : String(userName).trim();
     const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(req.body.profileImageUrl || '').trim();
 
@@ -169,31 +174,56 @@ router.post('/:roomId/join', async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid room password' });
     }
 
-    const existingIndex = room.players.findIndex(p => p.userId === String(userId));
-    if (existingIndex === -1 && room.players.length >= room.capacity) {
-      return res.status(400).json({ error: 'Room capacity limit reached' });
-    }
+    const existingPlayer = room.players.find(p => p.userId === formattedUserId);
 
-    if (existingIndex !== -1) {
-      room.players[existingIndex].name = trustedPlayerName;
-      if (trustedProfileImageUrl) {
-        room.players[existingIndex].profileImageUrl = trustedProfileImageUrl;
-      }
+    let updatedRoom;
+    if (existingPlayer) {
+      // Re-join/Update existing player atomically
+      updatedRoom = await Room.findOneAndUpdate(
+        { roomId, 'players.userId': formattedUserId },
+        {
+          $set: {
+            'players.$.name': trustedPlayerName,
+            'players.$.profileImageUrl': trustedProfileImageUrl || existingPlayer.profileImageUrl
+          }
+        },
+        { new: true }
+      );
     } else {
-      room.players.push({
-        userId: String(userId),
-        name: trustedPlayerName,
-        profileImageUrl: trustedProfileImageUrl,
-        isCreator: String(userId) === String(room.creatorId),
-        isReady: false,
-        joinedAt: new Date()
-      });
+      // Atomic push enforcing capacity check directly in MongoDB query filter
+      updatedRoom = await Room.findOneAndUpdate(
+        {
+          roomId,
+          status: 'waiting',
+          'players.userId': { $ne: formattedUserId },
+          $expr: { $lt: [{ $size: '$players' }, '$capacity'] }
+        },
+        {
+          $push: {
+            players: {
+              userId: formattedUserId,
+              name: trustedPlayerName,
+              profileImageUrl: trustedProfileImageUrl,
+              isCreator: formattedUserId === room.creatorId,
+              isReady: false,
+              joinedAt: new Date()
+            }
+          }
+        },
+        { new: true }
+      );
+
+      if (!updatedRoom) {
+        const currentRoom = await Room.findOne({ roomId });
+        if (currentRoom && currentRoom.players.length >= currentRoom.capacity) {
+          return res.status(400).json({ error: 'Room capacity limit reached' });
+        }
+        return res.status(400).json({ error: 'Unable to join room' });
+      }
     }
 
-    await room.save();
-
-    const vivoxChannelUri = room.vivoxChannelUri || getVivoxChannelUri(roomId);
-    const vivoxUserUri = getVivoxUserUri(String(userId));
+    const vivoxChannelUri = updatedRoom.vivoxChannelUri || getVivoxChannelUri(roomId);
+    const vivoxUserUri = getVivoxUserUri(formattedUserId);
     const vivoxToken = generateVivoxToken({
       userUri: vivoxUserUri,
       action: 'join',
@@ -203,17 +233,17 @@ router.post('/:roomId/join', async (req, res, next) => {
     const io = req.app.get('io');
     if (io) {
       io.to(roomId).emit('player_joined', {
-        player: { userId: String(userId), name: trustedPlayerName, profileImageUrl: trustedProfileImageUrl },
-        players: room.players,
-        playersCount: room.players.length,
-        capacity: room.capacity
+        player: { userId: formattedUserId, name: trustedPlayerName, profileImageUrl: trustedProfileImageUrl },
+        players: updatedRoom.players,
+        playersCount: updatedRoom.players.length,
+        capacity: updatedRoom.capacity
       });
     }
 
     res.json({
       ok: true,
       message: 'Joined room successfully',
-      room,
+      room: updatedRoom,
       vivox: {
         token: vivoxToken,
         channelUri: vivoxChannelUri,
@@ -240,36 +270,29 @@ router.post('/:roomId/vivox-token', async (req, res, next) => {
     const roomId = String(rawRoomId).toUpperCase().trim();
     const { userId, userName } = req.body || {};
 
-    console.log(`[Vivox] Token request for room: ${roomId}, user: ${userId}`);
-
     if (!userId || String(userId).trim() === '') {
-      console.log(`[Vivox] Unauthorized token request: missing userId`);
       return res.status(400).json({ ok: false, message: 'userId is required' });
     }
 
+    const formattedUserId = String(userId).trim().toUpperCase();
+
     if (!userName || String(userName).trim() === '') {
-      console.log(`[Vivox] Unauthorized token request: missing userName`);
       return res.status(400).json({ ok: false, message: 'userName is required' });
     }
 
     const room = await Room.findOne({ roomId });
     if (!room) {
-      console.log(`[Vivox] Token request failed: Room ${roomId} not found`);
       return res.status(404).json({ ok: false, message: 'Room not found' });
     }
 
     if (room.status === 'finished') {
-      console.log(`[Vivox] Token request rejected: Room ${roomId} is finished`);
       return res.status(403).json({ ok: false, message: 'Room is already finished' });
     }
 
-    const player = room.players && room.players.find(p => String(p.userId) === String(userId).trim());
+    const player = room.players && room.players.find(p => p.userId === formattedUserId);
     if (!player) {
-      console.log(`[Vivox] Unauthorized token request: User ${userId} is not a member of room ${roomId}`);
       return res.status(403).json({ ok: false, message: 'User is not a member of this room' });
     }
-
-    console.log(`[Vivox] Membership verified for user: ${userId} in room ${roomId}`);
 
     const vivoxChannelUri = room.vivoxChannelUri || getVivoxChannelUri(roomId);
     const vivoxUserUri = getVivoxUserUri(player.userId);
@@ -285,8 +308,6 @@ router.post('/:roomId/vivox-token', async (req, res, next) => {
       console.error(`[Vivox] Error generating token:`, err.message);
       return res.status(500).json({ ok: false, message: 'Vivox service configuration error' });
     }
-
-    console.log(`[Vivox] Token generated successfully`);
 
     res.json({
       ok: true,
@@ -306,9 +327,8 @@ router.post('/:roomId/vivox-token', async (req, res, next) => {
 });
 
 /**
-/**
  * POST /api/rooms/:roomId/leave
- * Player leaves room. If creator exits, room is permanently deleted from MongoDB and real-time room_deleted event is broadcast.
+ * Player leaves room. Supports host migration if creator exits.
  * Body: { userId }
  */
 router.post('/:roomId/leave', async (req, res, next) => {
@@ -320,50 +340,73 @@ router.post('/:roomId/leave', async (req, res, next) => {
       return res.status(400).json({ error: 'userId is required' });
     }
 
+    const formattedUserId = String(userId).trim().toUpperCase();
     const room = await Room.findOne({ roomId });
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
     }
 
-    const isCreator = String(room.creatorId) === String(userId);
-    const io = req.app.get('io');
+    const isMember = room.players.some(p => p.userId === formattedUserId);
+    if (!isMember) {
+      return res.status(400).json({ error: 'User is not in this room' });
+    }
 
-    if (isCreator) {
-      // Creator exits -> Remove room from MongoDB & notify clients live
+    const io = req.app.get('io');
+    room.players = room.players.filter(p => p.userId !== formattedUserId);
+
+    if (room.players.length === 0) {
+      // All players left -> Remove room permanently from MongoDB
       await Room.deleteOne({ roomId });
 
       if (io) {
         io.to(roomId).emit('room_deleted', {
           roomId,
-          reason: 'Room creator has exited the room',
-          deletedBy: userId
+          reason: 'All players have exited the room',
+          deletedBy: formattedUserId
         });
         io.in(roomId).socketsLeave(roomId);
       }
 
       return res.json({
         ok: true,
-        message: 'Creator exited. Room deleted permanently from MongoDB.',
+        message: 'All players exited. Room deleted from MongoDB.',
         roomDeleted: true
       });
     } else {
-      // Non-creator exits -> Remove player from list in MongoDB
-      room.players = room.players.filter(p => p.userId !== String(userId));
+      let hostMigrated = false;
+      if (room.creatorId === formattedUserId) {
+        // Host migration to remaining oldest player
+        room.players[0].isCreator = true;
+        room.creatorId = room.players[0].userId;
+        room.creatorName = room.players[0].name;
+        hostMigrated = true;
+      }
+
       await room.save();
 
       if (io) {
         io.to(roomId).emit('player_left', {
-          userId: String(userId),
+          userId: formattedUserId,
           players: room.players,
-          playersCount: room.players.length
+          playersCount: room.players.length,
+          newCreatorId: room.creatorId
         });
+
+        if (hostMigrated) {
+          io.to(roomId).emit('host_changed', {
+            roomId,
+            newHost: { userId: room.creatorId, name: room.creatorName }
+          });
+        }
       }
 
       return res.json({
         ok: true,
-        message: 'Left room successfully',
+        message: hostMigrated ? 'Creator left. Host privileges transferred to next player.' : 'Left room successfully',
         roomDeleted: false,
-        playersCount: room.players.length
+        hostMigrated,
+        playersCount: room.players.length,
+        room
       });
     }
   } catch (err) {
@@ -373,23 +416,32 @@ router.post('/:roomId/leave', async (req, res, next) => {
 
 /**
  * DELETE /api/rooms/:roomId & POST /api/rooms/:roomId/end
- * Remove/delete room directly from MongoDB and notify all connected clients in real time.
+ * Remove/delete room directly from MongoDB. Protected to room creator.
  */
 const removeRoomHandler = async (req, res, next) => {
   try {
     const roomId = req.params.roomId.toUpperCase().trim();
-    const { userId, reason = 'Room deleted by request or admin' } = req.body || {};
+    const { userId, reason = 'Room deleted by request' } = req.body || {};
 
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required to end or delete a room' });
+    }
+
+    const formattedUserId = String(userId).trim().toUpperCase();
     const room = await Room.findOne({ roomId });
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
+    }
+
+    if (room.creatorId !== formattedUserId) {
+      return res.status(403).json({ error: 'Only the room creator can end or delete the room' });
     }
 
     await Room.deleteOne({ roomId });
 
     const io = req.app.get('io');
     if (io) {
-      io.to(roomId).emit('room_deleted', { roomId, reason, endedBy: userId });
+      io.to(roomId).emit('room_deleted', { roomId, reason, endedBy: formattedUserId });
       io.in(roomId).socketsLeave(roomId);
     }
 
