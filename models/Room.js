@@ -74,4 +74,9 @@ const roomSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for zero-lag socket lookups and fast room listing
+roomSchema.index({ status: 1, isPublic: 1, createdAt: -1 });
+roomSchema.index({ 'players.socketId': 1 });
+roomSchema.index({ 'players.userId': 1 });
+
 module.exports = mongoose.model('Room', roomSchema);

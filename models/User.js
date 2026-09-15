@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
       maxlength: 254,
       match: /^[a-zA-Z0-9._%+-]+@gmail\.com$/
     },
-    deviceId: { type: String, trim: true, default: '' },
+    deviceId: { type: String, trim: true, default: '', index: true },
     profileImageUrl: { type: String, trim: true, default: '' },
     coins: { type: Number, default: 0, min: 0 },
     gems: { type: Number, default: 0, min: 0 }
