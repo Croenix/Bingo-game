@@ -1,9 +1,22 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const Room = require('../models/Room');
 const User = require('../models/User');
 const { generateUniqueRoomId } = require('../utils/roomIdGenerator');
 const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../utils/vivox');
+
+function checkDbConnection(req, res, next) {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Database is currently disconnected. Please try again in a few moments.'
+    });
+  }
+  next();
+}
+
+router.use(checkDbConnection);
 
 /**
  * POST /api/rooms

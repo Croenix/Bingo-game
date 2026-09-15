@@ -33,20 +33,21 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d', etag: true }));
 
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 500, standardHeaders: 'draft-8', legacyHeaders: false });
 app.use('/api', apiLimiter);
 
-app.get('/api/health', (req, res) =>
+app.get('/api/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
     service: 'bingo-user-server',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     socket: io ? 'initialized' : 'inactive',
     uptime: process.uptime()
-  })
-);
+  });
+});
 
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
@@ -90,6 +91,22 @@ async function start() {
     console.error('MongoDB connection failed (Server continues running):', e.message);
   }
 }
+
+// Graceful shutdown
+const shutdown = async () => {
+  console.log('Shutting down server gracefully...');
+  try {
+    await mongoose.connection.close();
+  } catch (err) {
+    // Ignore db close error on exit
+  }
+  server.close(() => {
+    process.exit(0);
+  });
+};
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 start();
 

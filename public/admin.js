@@ -536,7 +536,7 @@
       const coins = Number(u.coins || 0).toLocaleString();
       const gems = Number(u.gems || 0).toLocaleString();
       const deviceTag = u.deviceId
-        ? `<span class="id-badge" title="Click to copy Device ID" onclick="navigator.clipboard.writeText('${escapeHtml(u.deviceId)}')"><i class="fa-solid fa-mobile-screen text-cyan"></i> ${escapeHtml(u.deviceId)}</span>`
+        ? `<span class="id-badge copy-trigger" title="Click to copy Device ID" data-copy="${escapeHtml(u.deviceId)}"><i class="fa-solid fa-mobile-screen text-cyan"></i> ${escapeHtml(u.deviceId)}</span>`
         : '<span class="text-dim">N/A</span>';
 
       html += `
@@ -555,7 +555,7 @@
           <td><span class="coin-badge">🟡 ${coins}</span></td>
           <td><span class="gem-badge">💎 ${gems}</span></td>
           <td>
-            <span class="id-badge" title="Click to copy ID" onclick="navigator.clipboard.writeText('${u._id}')">
+            <span class="id-badge copy-trigger" title="Click to copy ID" data-copy="${u._id}">
               ${u._id} <i class="fa-regular fa-copy"></i>
             </span>
           </td>
@@ -729,7 +729,6 @@
       u.gems || 0,
       `"${u.createdAt || ''}"`
     ]);
-    content = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     content = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
 
     const blob = new Blob([content], { type: mimeType });
@@ -1271,6 +1270,13 @@
     });
 
     el.userTableBody.addEventListener('click', (e) => {
+      const copyEl = e.target.closest('.copy-trigger');
+      if (copyEl && copyEl.dataset.copy) {
+        navigator.clipboard.writeText(copyEl.dataset.copy);
+        showToast('Copied to clipboard!', 'info');
+        return;
+      }
+
       const btn = e.target.closest('.btn-icon');
       if (!btn) return;
       const action = btn.dataset.action;

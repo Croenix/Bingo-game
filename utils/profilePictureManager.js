@@ -5,32 +5,46 @@ const http = require('http');
 
 const JSON_FILE_PATH = path.join(__dirname, '..', 'profilePictures.json');
 
+let cachedPictures = null;
+let lastReadTime = 0;
+const CACHE_TTL_MS = 10000; // 10 seconds cache
+
 /**
- * Ensures profilePictures.json exists and returns array of image URLs.
+ * Ensures profilePictures.json exists and returns array of image URLs (cached in memory).
  * @returns {string[]} Array of profile picture image URLs
  */
 function getProfilePictures() {
+  const now = Date.now();
+  if (cachedPictures !== null && now - lastReadTime < CACHE_TTL_MS) {
+    return [...cachedPictures];
+  }
   try {
     if (!fs.existsSync(JSON_FILE_PATH)) {
       fs.writeFileSync(JSON_FILE_PATH, JSON.stringify([], null, 2), 'utf8');
+      cachedPictures = [];
+      lastReadTime = now;
       return [];
     }
     const data = fs.readFileSync(JSON_FILE_PATH, 'utf8');
     const parsed = JSON.parse(data);
-    return Array.isArray(parsed) ? parsed : [];
+    cachedPictures = Array.isArray(parsed) ? parsed : [];
+    lastReadTime = now;
+    return [...cachedPictures];
   } catch (err) {
     console.error('Error reading profilePictures.json:', err.message);
-    return [];
+    return cachedPictures || [];
   }
 }
 
 /**
- * Saves profile picture array to profilePictures.json.
+ * Saves profile picture array to profilePictures.json and updates in-memory cache.
  * @param {string[]} pictures
  */
 function saveProfilePictures(pictures) {
   try {
     fs.writeFileSync(JSON_FILE_PATH, JSON.stringify(pictures, null, 2), 'utf8');
+    cachedPictures = [...pictures];
+    lastReadTime = Date.now();
   } catch (err) {
     console.error('Error writing to profilePictures.json:', err.message);
     throw err;

@@ -1,6 +1,23 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const Challenge = require('../models/Challenge');
 const router = express.Router();
+
+function checkDbConnection(req, res, next) {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      ok: false,
+      error: 'Database is currently disconnected. Please try again in a few moments.'
+    });
+  }
+  next();
+}
+
+function escapeRegex(text) {
+  return String(text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
+router.use(checkDbConnection);
 
 /**
  * GET /api/challenges/categories
@@ -32,9 +49,10 @@ router.get('/', async (req, res, next) => {
       filter.category = String(category).trim();
     }
     if (search) {
+      const escaped = escapeRegex(search);
       filter.$or = [
-        { title: { $regex: String(search).trim(), $options: 'i' } },
-        { category: { $regex: String(search).trim(), $options: 'i' } }
+        { title: { $regex: escaped, $options: 'i' } },
+        { category: { $regex: escaped, $options: 'i' } }
       ];
     }
 

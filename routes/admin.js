@@ -46,6 +46,24 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function escapeRegex(text) {
+  return String(text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
+function checkDbConnection(req, res, next) {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Database is currently disconnected. Please check MongoDB connection and Atlas IP whitelist.'
+    });
+  }
+  next();
+}
+
+// Telemetry 5-second Cache
+let dbStatusCache = null;
+let lastDbStatusFetch = 0;
+const DB_STATUS_CACHE_TTL_MS = 5000;
+
 // Live MongoDB Telemetry & Status Endpoint
 router.get('/db-status', requireAdmin, async (req, res, next) => {
   try {
@@ -66,6 +84,11 @@ router.get('/db-status', requireAdmin, async (req, res, next) => {
       });
     }
 
+    const now = Date.now();
+    if (dbStatusCache && now - lastDbStatusFetch < DB_STATUS_CACHE_TTL_MS) {
+      return res.json({ ...dbStatusCache, timestamp: new Date().toISOString() });
+    }
+
     const startTime = performance.now();
     let dbStats = null;
     let collectionsList = [];
@@ -81,7 +104,7 @@ router.get('/db-status', requireAdmin, async (req, res, next) => {
         collectionsList = await Promise.all(
           cols.map(async c => {
             try {
-              const count = await mongoose.connection.db.collection(c.name).countDocuments();
+              const count = await mongoose.connection.db.collection(c.name).estimatedDocumentCount();
               return { name: c.name, count };
             } catch {
               return { name: c.name, count: 0 };
@@ -93,7 +116,7 @@ router.get('/db-status', requireAdmin, async (req, res, next) => {
       console.error('MongoDB telemetry fetch note:', err.message);
     }
 
-    res.json({
+    dbStatusCache = {
       isConnected: true,
       state,
       dbName: mongoose.connection.name || 'bingo_game',
@@ -109,7 +132,12 @@ router.get('/db-status', requireAdmin, async (req, res, next) => {
             indexSizeFormatted: formatBytes(dbStats.indexSize || 0)
           }
         : null,
-      collectionsList,
+      collectionsList
+    };
+    lastDbStatusFetch = now;
+
+    res.json({
+      ...dbStatusCache,
       timestamp: new Date().toISOString()
     });
   } catch (e) {
@@ -218,7 +246,7 @@ router.get('/system', requireAdmin, async (req, res, next) => {
 // ==================== USER MANAGEMENT ROUTES ====================
 
 // Admin Create User (with Coins, Gems & Device ID)
-router.post('/users', requireAdmin, async (req, res, next) => {
+router.post('/users', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
     const gmailId = String(req.body.gmailId || '').trim().toLowerCase();
@@ -247,18 +275,19 @@ router.post('/users', requireAdmin, async (req, res, next) => {
 });
 
 // List Users
-router.get('/users', requireAdmin, async (req, res, next) => {
+router.get('/users', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const search = String(req.query.search || '').trim();
-    const filter = search
+    const escaped = escapeRegex(search);
+    const filter = escaped
       ? {
           $or: [
-            { userId: { $regex: search, $options: 'i' } },
-            { name: { $regex: search, $options: 'i' } },
-            { gmailId: { $regex: search, $options: 'i' } },
-            { deviceId: { $regex: search, $options: 'i' } }
+            { userId: { $regex: escaped, $options: 'i' } },
+            { name: { $regex: escaped, $options: 'i' } },
+            { gmailId: { $regex: escaped, $options: 'i' } },
+            { deviceId: { $regex: escaped, $options: 'i' } }
           ]
         }
       : {};
@@ -273,7 +302,7 @@ router.get('/users', requireAdmin, async (req, res, next) => {
 });
 
 // Get User by ID
-router.get('/users/:id', requireAdmin, async (req, res, next) => {
+router.get('/users/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).select('-__v');
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -285,7 +314,7 @@ router.get('/users/:id', requireAdmin, async (req, res, next) => {
 });
 
 // Update User (including Coins, Gems & Device ID)
-router.patch('/users/:id', requireAdmin, async (req, res, next) => {
+router.patch('/users/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const update = {};
     if (req.body.name !== undefined) {
@@ -321,7 +350,7 @@ router.patch('/users/:id', requireAdmin, async (req, res, next) => {
 });
 
 // Delete User
-router.delete('/users/:id', requireAdmin, async (req, res, next) => {
+router.delete('/users/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -335,14 +364,15 @@ router.delete('/users/:id', requireAdmin, async (req, res, next) => {
 // ==================== CHALLENGES MANAGEMENT ROUTES ====================
 
 // List All Challenges
-router.get('/challenges', requireAdmin, async (req, res, next) => {
+router.get('/challenges', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const search = String(req.query.search || '').trim();
-    const filter = search
+    const escaped = escapeRegex(search);
+    const filter = escaped
       ? {
           $or: [
-            { title: { $regex: search, $options: 'i' } },
-            { category: { $regex: search, $options: 'i' } }
+            { title: { $regex: escaped, $options: 'i' } },
+            { category: { $regex: escaped, $options: 'i' } }
           ]
         }
       : {};
@@ -354,7 +384,7 @@ router.get('/challenges', requireAdmin, async (req, res, next) => {
 });
 
 // Get Challenge by ID
-router.get('/challenges/:id', requireAdmin, async (req, res, next) => {
+router.get('/challenges/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const challenge = await Challenge.findById(req.params.id);
     if (!challenge) return res.status(404).json({ error: 'Challenge not found' });
@@ -366,7 +396,7 @@ router.get('/challenges/:id', requireAdmin, async (req, res, next) => {
 });
 
 // Create Challenge
-router.post('/challenges', requireAdmin, async (req, res, next) => {
+router.post('/challenges', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const title = String(req.body.title || '').trim();
     const category = String(req.body.category || 'Standard').trim();
@@ -403,7 +433,7 @@ router.post('/challenges', requireAdmin, async (req, res, next) => {
 });
 
 // Update Challenge
-router.patch('/challenges/:id', requireAdmin, async (req, res, next) => {
+router.patch('/challenges/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const update = {};
     if (req.body.title !== undefined) {
@@ -432,7 +462,7 @@ router.patch('/challenges/:id', requireAdmin, async (req, res, next) => {
 });
 
 // Delete Challenge
-router.delete('/challenges/:id', requireAdmin, async (req, res, next) => {
+router.delete('/challenges/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const challenge = await Challenge.findByIdAndDelete(req.params.id);
     if (!challenge) return res.status(404).json({ error: 'Challenge not found' });

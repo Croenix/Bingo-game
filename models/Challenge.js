@@ -18,5 +18,7 @@ const challengeSchema = new mongoose.Schema(
 );
 
 challengeSchema.index({ status: 1, category: 1, createdAt: -1 });
+challengeSchema.index({ createdAt: -1 });
+challengeSchema.index({ title: 1 });
 
 module.exports = mongoose.model('Challenge', challengeSchema);
