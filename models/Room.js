@@ -8,7 +8,11 @@ const playerSchema = new mongoose.Schema(
     socketId: { type: String, default: '' },
     isCreator: { type: Boolean, default: false },
     isReady: { type: Boolean, default: false },
-    joinedAt: { type: Date, default: Date.now }
+    joinedAt: { type: Date, default: Date.now },
+    bingoCard: {
+      numbers: { type: [Number], default: undefined },
+      freeCenter: { type: Boolean, default: true }
+    }
   },
   { _id: false }
 );
@@ -66,6 +70,10 @@ const roomSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    expiresAt: {
+      type: Date,
+      required: true
+    },
     gameData: {
       type: mongoose.Schema.Types.Mixed,
       default: {}
@@ -74,7 +82,8 @@ const roomSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Indexes for zero-lag socket lookups and fast room listing
+// Indexes for zero-lag socket lookups, TTL cleanup, and fast room listing
+roomSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 roomSchema.index({ status: 1, isPublic: 1, createdAt: -1 });
 roomSchema.index({ 'players.socketId': 1 });
 roomSchema.index({ 'players.userId': 1 });

@@ -5,6 +5,8 @@ const Room = require('../models/Room');
 const User = require('../models/User');
 const { generateUniqueRoomId } = require('../utils/roomIdGenerator');
 const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../utils/vivox');
+const { generateUniqueBingoCard } = require('../utils/bingoCardGenerator');
+const { calculateExpiresAt, isRoomExpired, checkAndRemoveIfExpired, sanitizeRoom, sanitizePlayer } = require('../utils/roomHelpers');
 
 function checkDbConnection(req, res, next) {
   if (mongoose.connection.readyState !== 1) {
@@ -20,7 +22,7 @@ router.use(checkDbConnection);
 
 /**
  * POST /api/rooms
- * Create a new room with custom ID option, password, and public/private setting.
+ * Create a new room with custom ID option, password, public/private setting, 1-hour expiration, and initial Bingo card.
  * Body: { creatorId, creatorName, name, capacity, roomId, customRoomId, password, isPublic }
  */
 router.post('/', async (req, res, next) => {
@@ -52,7 +54,11 @@ router.post('/', async (req, res, next) => {
     if (finalRoomId) {
       const existingRoom = await Room.findOne({ roomId: finalRoomId });
       if (existingRoom) {
-        return res.status(400).json({ error: `Room ID '${finalRoomId}' already exists` });
+        if (await checkAndRemoveIfExpired(existingRoom, req.app.get('io'))) {
+          // Previously existing room has expired and was removed
+        } else {
+          return res.status(400).json({ error: `Room ID '${finalRoomId}' already exists` });
+        }
       }
     } else {
       finalRoomId = await generateUniqueRoomId(Room);
@@ -64,6 +70,10 @@ router.post('/', async (req, res, next) => {
 
     const maxCap = Math.min(Math.max(Number(capacity) || 4, 2), 10);
     const vivoxChannelUri = getVivoxChannelUri(finalRoomId);
+    const expiresAt = calculateExpiresAt();
+
+    // Generate unique Bingo card for creator
+    const creatorBingoCard = generateUniqueBingoCard([]);
 
     const room = new Room({
       roomId: finalRoomId,
@@ -75,6 +85,7 @@ router.post('/', async (req, res, next) => {
       capacity: maxCap,
       status: 'waiting',
       vivoxChannelUri,
+      expiresAt,
       players: [
         {
           userId: formattedCreatorId,
@@ -82,12 +93,14 @@ router.post('/', async (req, res, next) => {
           profileImageUrl: trustedProfileImageUrl,
           isCreator: true,
           isReady: true,
-          joinedAt: new Date()
+          joinedAt: new Date(),
+          bingoCard: creatorBingoCard
         }
       ]
     });
 
     await room.save();
+    console.log(`[Room] Created room ${finalRoomId} (expiresAt: ${expiresAt.toISOString()})`);
 
     const vivoxUserUri = getVivoxUserUri(formattedCreatorId);
     const vivoxToken = generateVivoxToken({
@@ -99,7 +112,8 @@ router.post('/', async (req, res, next) => {
     res.status(201).json({
       ok: true,
       message: 'Room created successfully',
-      room,
+      room: sanitizeRoom(room),
+      myBingoCard: creatorBingoCard,
       vivox: {
         token: vivoxToken,
         channelUri: vivoxChannelUri,
@@ -113,19 +127,22 @@ router.post('/', async (req, res, next) => {
 
 /**
  * GET /api/rooms
- * List active public/available rooms for joining.
+ * List active public/available rooms for joining. Cleans up expired rooms.
  */
 router.get('/', async (req, res, next) => {
   try {
-    const rooms = await Room.find({ status: 'waiting' }).sort({ createdAt: -1 }).lean();
-    // Filter rooms that are available and hide raw password field in response
-    const availableRooms = rooms
-      .filter(r => r.players.length < r.capacity)
-      .map(r => {
-        const { password, ...safeRoom } = r;
-        safeRoom.hasPassword = Boolean(password && password.length > 0);
-        return safeRoom;
-      });
+    const rawRooms = await Room.find({ status: 'waiting' }).sort({ createdAt: -1 });
+    const availableRooms = [];
+
+    for (const r of rawRooms) {
+      if (isRoomExpired(r)) {
+        await checkAndRemoveIfExpired(r, req.app.get('io'));
+        continue;
+      }
+      if (r.players.length < r.capacity) {
+        availableRooms.push(sanitizeRoom(r));
+      }
+    }
 
     res.json({ ok: true, count: availableRooms.length, rooms: availableRooms });
   } catch (err) {
@@ -135,18 +152,21 @@ router.get('/', async (req, res, next) => {
 
 /**
  * GET /api/rooms/:roomId
- * Fetch room details.
+ * Fetch room details. Validates expiration & sanitizes output.
  */
 router.get('/:roomId', async (req, res, next) => {
   try {
     const roomId = req.params.roomId.toUpperCase().trim();
-    const room = await Room.findOne({ roomId }).lean();
+    const room = await Room.findOne({ roomId });
     if (!room) {
       return res.status(404).json({ error: 'Room not found' });
     }
-    const { password, ...safeRoom } = room;
-    safeRoom.hasPassword = Boolean(password && password.length > 0);
-    res.json({ ok: true, room: safeRoom });
+
+    if (await checkAndRemoveIfExpired(room, req.app.get('io'))) {
+      return res.status(410).json({ error: 'Room has expired' });
+    }
+
+    res.json({ ok: true, room: sanitizeRoom(room) });
   } catch (err) {
     next(err);
   }
@@ -154,7 +174,7 @@ router.get('/:roomId', async (req, res, next) => {
 
 /**
  * POST /api/rooms/:roomId/join
- * Join room with password check & capacity enforcement.
+ * Join room with password check, capacity enforcement, 1-hour expiration check, and private Bingo card delivery.
  * Body: { userId, userName, password }
  */
 router.post('/:roomId/join', async (req, res, next) => {
@@ -178,6 +198,10 @@ router.post('/:roomId/join', async (req, res, next) => {
       return res.status(404).json({ error: 'Room not found' });
     }
 
+    if (await checkAndRemoveIfExpired(room, req.app.get('io'))) {
+      return res.status(410).json({ error: 'Room has expired' });
+    }
+
     if (room.status === 'finished') {
       return res.status(400).json({ error: 'Room is already finished' });
     }
@@ -190,20 +214,30 @@ router.post('/:roomId/join', async (req, res, next) => {
     const existingPlayer = room.players.find(p => p.userId === formattedUserId);
 
     let updatedRoom;
+    let playerBingoCard;
+
     if (existingPlayer) {
-      // Re-join/Update existing player atomically
+      // Re-join/Update existing player: preserve existing Bingo card
+      playerBingoCard = existingPlayer.bingoCard;
+      if (!playerBingoCard || !Array.isArray(playerBingoCard.numbers)) {
+        playerBingoCard = generateUniqueBingoCard(room.players);
+      }
+
       updatedRoom = await Room.findOneAndUpdate(
         { roomId, 'players.userId': formattedUserId },
         {
           $set: {
             'players.$.name': trustedPlayerName,
-            'players.$.profileImageUrl': trustedProfileImageUrl || existingPlayer.profileImageUrl
+            'players.$.profileImageUrl': trustedProfileImageUrl || existingPlayer.profileImageUrl,
+            'players.$.bingoCard': playerBingoCard
           }
         },
         { new: true }
       );
     } else {
-      // Atomic push enforcing capacity check directly in MongoDB query filter
+      // New player join: generate a unique Bingo card
+      playerBingoCard = generateUniqueBingoCard(room.players);
+
       updatedRoom = await Room.findOneAndUpdate(
         {
           roomId,
@@ -219,7 +253,8 @@ router.post('/:roomId/join', async (req, res, next) => {
               profileImageUrl: trustedProfileImageUrl,
               isCreator: formattedUserId === room.creatorId,
               isReady: false,
-              joinedAt: new Date()
+              joinedAt: new Date(),
+              bingoCard: playerBingoCard
             }
           }
         },
@@ -243,12 +278,13 @@ router.post('/:roomId/join', async (req, res, next) => {
       targetUri: vivoxChannelUri
     });
 
+    const sanitizedRoom = sanitizeRoom(updatedRoom);
     const io = req.app.get('io');
     if (io) {
       io.to(roomId).emit('player_joined', {
         player: { userId: formattedUserId, name: trustedPlayerName, profileImageUrl: trustedProfileImageUrl },
-        players: updatedRoom.players,
-        playersCount: updatedRoom.players.length,
+        players: sanitizedRoom.players,
+        playersCount: sanitizedRoom.players.length,
         capacity: updatedRoom.capacity
       });
     }
@@ -256,7 +292,8 @@ router.post('/:roomId/join', async (req, res, next) => {
     res.json({
       ok: true,
       message: 'Joined room successfully',
-      room: updatedRoom,
+      room: sanitizedRoom,
+      myBingoCard: playerBingoCard,
       vivox: {
         token: vivoxToken,
         channelUri: vivoxChannelUri,
@@ -296,6 +333,10 @@ router.post('/:roomId/vivox-token', async (req, res, next) => {
     const room = await Room.findOne({ roomId });
     if (!room) {
       return res.status(404).json({ ok: false, message: 'Room not found' });
+    }
+
+    if (await checkAndRemoveIfExpired(room, req.app.get('io'))) {
+      return res.status(410).json({ ok: false, message: 'Room has expired' });
     }
 
     if (room.status === 'finished') {
@@ -341,7 +382,8 @@ router.post('/:roomId/vivox-token', async (req, res, next) => {
 
 /**
  * POST /api/rooms/:roomId/leave
- * Player leaves room. Supports host migration if creator exits.
+ * Player leaves room.
+ * Requirement 4: If ROOM CREATOR leaves -> Delete entire room from MongoDB, notify players, close room. NO host migration.
  * Body: { userId }
  */
 router.post('/:roomId/leave', async (req, res, next) => {
@@ -365,10 +407,32 @@ router.post('/:roomId/leave', async (req, res, next) => {
     }
 
     const io = req.app.get('io');
+
+    // Requirement 4: Creator leaves -> Delete room completely
+    if (room.creatorId === formattedUserId) {
+      console.log(`[Room] Creator ${formattedUserId} left. Deleting room ${roomId}`);
+      await Room.deleteOne({ roomId });
+
+      if (io) {
+        io.to(roomId).emit('room_deleted', {
+          roomId,
+          reason: 'Room creator left the room',
+          deletedBy: formattedUserId
+        });
+        io.in(roomId).socketsLeave(roomId);
+      }
+
+      return res.json({
+        ok: true,
+        message: 'Creator left. Room deleted from MongoDB.',
+        roomDeleted: true
+      });
+    }
+
+    // Non-creator player leaves -> Remove only that player
     room.players = room.players.filter(p => p.userId !== formattedUserId);
 
     if (room.players.length === 0) {
-      // All players left -> Remove room permanently from MongoDB
       await Room.deleteOne({ roomId });
 
       if (io) {
@@ -386,40 +450,24 @@ router.post('/:roomId/leave', async (req, res, next) => {
         roomDeleted: true
       });
     } else {
-      let hostMigrated = false;
-      if (room.creatorId === formattedUserId) {
-        // Host migration to remaining oldest player
-        room.players[0].isCreator = true;
-        room.creatorId = room.players[0].userId;
-        room.creatorName = room.players[0].name;
-        hostMigrated = true;
-      }
-
       await room.save();
+      const sanitizedRoom = sanitizeRoom(room);
 
       if (io) {
         io.to(roomId).emit('player_left', {
           userId: formattedUserId,
-          players: room.players,
+          players: sanitizedRoom.players,
           playersCount: room.players.length,
-          newCreatorId: room.creatorId
+          creatorId: room.creatorId
         });
-
-        if (hostMigrated) {
-          io.to(roomId).emit('host_changed', {
-            roomId,
-            newHost: { userId: room.creatorId, name: room.creatorName }
-          });
-        }
       }
 
       return res.json({
         ok: true,
-        message: hostMigrated ? 'Creator left. Host privileges transferred to next player.' : 'Left room successfully',
+        message: 'Left room successfully',
         roomDeleted: false,
-        hostMigrated,
         playersCount: room.players.length,
-        room
+        room: sanitizedRoom
       });
     }
   } catch (err) {
@@ -472,4 +520,3 @@ router.delete('/:roomId', removeRoomHandler);
 router.post('/:roomId/end', removeRoomHandler);
 
 module.exports = router;
-

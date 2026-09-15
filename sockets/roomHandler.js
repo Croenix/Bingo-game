@@ -2,6 +2,8 @@ const Room = require('../models/Room');
 const User = require('../models/User');
 const { generateUniqueRoomId } = require('../utils/roomIdGenerator');
 const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../utils/vivox');
+const { generateUniqueBingoCard } = require('../utils/bingoCardGenerator');
+const { calculateExpiresAt, checkAndRemoveIfExpired, sanitizeRoom } = require('../utils/roomHelpers');
 
 function registerRoomHandlers(io, socket) {
   const sendError = (eventName, message) => {
@@ -29,7 +31,11 @@ function registerRoomHandlers(io, socket) {
       if (finalRoomId) {
         const existingRoom = await Room.findOne({ roomId: finalRoomId });
         if (existingRoom) {
-          return sendError('create_room', `Room ID '${finalRoomId}' is already taken`);
+          if (await checkAndRemoveIfExpired(existingRoom, io)) {
+            // Room expired and removed
+          } else {
+            return sendError('create_room', `Room ID '${finalRoomId}' is already taken`);
+          }
         }
       } else {
         finalRoomId = await generateUniqueRoomId(Room);
@@ -46,6 +52,9 @@ function registerRoomHandlers(io, socket) {
         targetUri: vivoxChannelUri
       });
 
+      const expiresAt = calculateExpiresAt();
+      const creatorBingoCard = generateUniqueBingoCard([]);
+
       const newRoom = new Room({
         roomId: finalRoomId,
         name: String(roomName).trim(),
@@ -56,6 +65,7 @@ function registerRoomHandlers(io, socket) {
         capacity: Math.min(Math.max(Number(capacity) || 4, 2), 10),
         status: 'waiting',
         vivoxChannelUri,
+        expiresAt,
         players: [
           {
             userId: formattedUserId,
@@ -64,7 +74,8 @@ function registerRoomHandlers(io, socket) {
             socketId: socket.id,
             isCreator: true,
             isReady: true,
-            joinedAt: new Date()
+            joinedAt: new Date(),
+            bingoCard: creatorBingoCard
           }
         ]
       });
@@ -72,14 +83,22 @@ function registerRoomHandlers(io, socket) {
       await newRoom.save();
       socket.join(finalRoomId);
 
+      const sanitizedRoom = sanitizeRoom(newRoom);
+
       socket.emit('room_created', {
         ok: true,
-        room: newRoom,
+        room: sanitizedRoom,
+        myBingoCard: creatorBingoCard,
         vivox: {
           token: vivoxToken,
           channelUri: vivoxChannelUri,
           userUri: vivoxUserUri
         }
+      });
+
+      socket.emit('bingo_card_assigned', {
+        roomId: finalRoomId,
+        bingoCard: creatorBingoCard
       });
     } catch (err) {
       console.error('Socket create_room error:', err);
@@ -110,6 +129,10 @@ function registerRoomHandlers(io, socket) {
         return sendError('join_room', 'Room not found');
       }
 
+      if (await checkAndRemoveIfExpired(room, io)) {
+        return sendError('join_room', 'Room has expired');
+      }
+
       if (room.status === 'finished') {
         return sendError('join_room', 'Room has already finished');
       }
@@ -121,21 +144,31 @@ function registerRoomHandlers(io, socket) {
       const existingPlayer = room.players.find(p => p.userId === formattedUserId);
 
       let updatedRoom;
+      let playerBingoCard;
+
       if (existingPlayer) {
-        // Update existing player socketId and profile
+        // Update existing player socketId and profile while preserving Bingo card
+        playerBingoCard = existingPlayer.bingoCard;
+        if (!playerBingoCard || !Array.isArray(playerBingoCard.numbers)) {
+          playerBingoCard = generateUniqueBingoCard(room.players);
+        }
+
         updatedRoom = await Room.findOneAndUpdate(
           { roomId: formattedRoomId, 'players.userId': formattedUserId },
           {
             $set: {
               'players.$.socketId': socket.id,
               'players.$.name': trustedName,
-              'players.$.profileImageUrl': trustedProfileImageUrl || existingPlayer.profileImageUrl
+              'players.$.profileImageUrl': trustedProfileImageUrl || existingPlayer.profileImageUrl,
+              'players.$.bingoCard': playerBingoCard
             }
           },
           { new: true }
         );
       } else {
         // Atomic push with capacity check directly inside query filter
+        playerBingoCard = generateUniqueBingoCard(room.players);
+
         updatedRoom = await Room.findOneAndUpdate(
           {
             roomId: formattedRoomId,
@@ -152,7 +185,8 @@ function registerRoomHandlers(io, socket) {
                 socketId: socket.id,
                 isCreator: formattedUserId === room.creatorId,
                 isReady: false,
-                joinedAt: new Date()
+                joinedAt: new Date(),
+                bingoCard: playerBingoCard
               }
             }
           },
@@ -178,9 +212,12 @@ function registerRoomHandlers(io, socket) {
         targetUri: vivoxChannelUri
       });
 
+      const sanitizedRoom = sanitizeRoom(updatedRoom);
+
       const responsePayload = {
         ok: true,
-        room: updatedRoom,
+        room: sanitizedRoom,
+        myBingoCard: playerBingoCard,
         vivox: {
           token: vivoxToken,
           channelUri: vivoxChannelUri,
@@ -189,10 +226,15 @@ function registerRoomHandlers(io, socket) {
       };
 
       socket.emit('room_joined', responsePayload);
+      socket.emit('bingo_card_assigned', {
+        roomId: formattedRoomId,
+        bingoCard: playerBingoCard
+      });
+
       socket.to(formattedRoomId).emit('player_joined', {
         player: { userId: formattedUserId, name: trustedName, profileImageUrl: trustedProfileImageUrl, socketId: socket.id },
-        players: updatedRoom.players,
-        playersCount: updatedRoom.players.length,
+        players: sanitizedRoom.players,
+        playersCount: sanitizedRoom.players.length,
         capacity: updatedRoom.capacity
       });
     } catch (err) {
@@ -216,6 +258,21 @@ function registerRoomHandlers(io, socket) {
       if (!room) return;
 
       socket.leave(formattedRoomId);
+
+      // Requirement 4: Creator leaves -> Delete room completely (No host migration)
+      if (room.creatorId === formattedUserId) {
+        console.log(`[Socket] Creator ${formattedUserId} left room ${formattedRoomId}. Deleting room.`);
+        await Room.deleteOne({ roomId: formattedRoomId });
+        io.to(formattedRoomId).emit('room_deleted', {
+          roomId: formattedRoomId,
+          reason: 'Room creator left the room',
+          deletedBy: formattedUserId
+        });
+        io.in(formattedRoomId).socketsLeave(formattedRoomId);
+        return;
+      }
+
+      // Non-creator leaves -> Remove player
       room.players = room.players.filter(p => p.userId !== formattedUserId);
 
       if (room.players.length === 0) {
@@ -226,29 +283,15 @@ function registerRoomHandlers(io, socket) {
         });
         io.in(formattedRoomId).socketsLeave(formattedRoomId);
       } else {
-        let hostMigrated = false;
-        if (room.creatorId === formattedUserId) {
-          room.players[0].isCreator = true;
-          room.creatorId = room.players[0].userId;
-          room.creatorName = room.players[0].name;
-          hostMigrated = true;
-        }
-
         await room.save();
+        const sanitizedRoom = sanitizeRoom(room);
 
         io.to(formattedRoomId).emit('player_left', {
           userId: formattedUserId,
-          players: room.players,
+          players: sanitizedRoom.players,
           playersCount: room.players.length,
-          newCreatorId: room.creatorId
+          creatorId: room.creatorId
         });
-
-        if (hostMigrated) {
-          io.to(formattedRoomId).emit('host_changed', {
-            roomId: formattedRoomId,
-            newHost: { userId: room.creatorId, name: room.creatorName }
-          });
-        }
       }
     } catch (err) {
       console.error('Socket leave_room error:', err);
@@ -311,6 +354,20 @@ function registerRoomHandlers(io, socket) {
         const formattedUserId = player.userId;
         const formattedRoomId = room.roomId;
 
+        // Requirement 4: Creator disconnects -> Delete entire room (No host migration)
+        if (room.creatorId === formattedUserId) {
+          console.log(`[Socket] Creator ${formattedUserId} disconnected from room ${formattedRoomId}. Deleting room.`);
+          await Room.deleteOne({ roomId: formattedRoomId });
+          io.to(formattedRoomId).emit('room_deleted', {
+            roomId: formattedRoomId,
+            reason: 'Room creator disconnected from room',
+            deletedBy: formattedUserId
+          });
+          io.in(formattedRoomId).socketsLeave(formattedRoomId);
+          continue;
+        }
+
+        // Non-creator disconnects -> Remove player
         room.players = room.players.filter(p => p.socketId !== socket.id);
 
         if (room.players.length === 0) {
@@ -321,30 +378,16 @@ function registerRoomHandlers(io, socket) {
           });
           io.in(formattedRoomId).socketsLeave(formattedRoomId);
         } else {
-          let hostMigrated = false;
-          if (room.creatorId === formattedUserId) {
-            room.players[0].isCreator = true;
-            room.creatorId = room.players[0].userId;
-            room.creatorName = room.players[0].name;
-            hostMigrated = true;
-          }
-
           await room.save();
+          const sanitizedRoom = sanitizeRoom(room);
 
           io.to(formattedRoomId).emit('player_left', {
             userId: formattedUserId,
             socketId: socket.id,
-            players: room.players,
+            players: sanitizedRoom.players,
             playersCount: room.players.length,
-            newCreatorId: room.creatorId
+            creatorId: room.creatorId
           });
-
-          if (hostMigrated) {
-            io.to(formattedRoomId).emit('host_changed', {
-              roomId: formattedRoomId,
-              newHost: { userId: room.creatorId, name: room.creatorName }
-            });
-          }
         }
       }
     } catch (err) {
@@ -354,4 +397,3 @@ function registerRoomHandlers(io, socket) {
 }
 
 module.exports = registerRoomHandlers;
-
