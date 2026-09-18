@@ -28,9 +28,7 @@ router.post('/', async (req, res, next) => {
     const gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
     const inputName = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
-    const requestedUsername = (req.body.username !== undefined && String(req.body.username).trim())
-      ? String(req.body.username).trim()
-      : inputName;
+    const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : inputName;
     const profileImageUrl = req.body.profileImageUrl !== undefined ? String(req.body.profileImageUrl).trim() : undefined;
 
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
@@ -50,7 +48,7 @@ router.post('/', async (req, res, next) => {
 
     if (user) {
       // Existing user update
-      if (inputName) {
+      if (inputName !== undefined && inputName.length > 0) {
         user.name = inputName;
       }
       user.deviceId = deviceId;
@@ -68,8 +66,8 @@ router.post('/', async (req, res, next) => {
 
       // Backfill or update username if requested/missing
       if (!user.username) {
-        user.username = await generateUniqueUsername(User, requestedUsername || user.name);
-      } else if (requestedUsername && requestedUsername !== user.username) {
+        user.username = await generateUniqueUsername(User, requestedUsername);
+      } else if (req.body.username !== undefined && requestedUsername !== user.username) {
         const usernameTaken = await User.findOne({ username: requestedUsername, _id: { $ne: user._id } });
         if (usernameTaken) {
           return res.status(409).json({ error: 'Username is already taken by another user' });
@@ -89,14 +87,14 @@ router.post('/', async (req, res, next) => {
       let attempts = 0;
 
       // Determine initial name / username
-      let finalInputName = inputName || '';
+      const initialName = inputName || requestedUsername || '';
 
       while (!saved && attempts < 5) {
         attempts++;
         try {
           const newUserId = await generateUniqueUserId(User);
-          const newUsername = await generateUniqueUsername(User, requestedUsername || finalInputName);
-          const finalName = finalInputName || newUsername;
+          const newUsername = await generateUniqueUsername(User, requestedUsername || initialName);
+          const finalName = initialName || newUsername;
           const defaultAvatar = profileImageUrl || generateDefaultAvatar(newUserId);
           const initialCoins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
 
@@ -300,17 +298,18 @@ router.get('/gmail/:gmailId', async (req, res, next) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { userId, username, deviceId, gmailId } = req.query;
+    const { userId, username, name, deviceId, gmailId } = req.query;
 
     const filter = {};
     if (userId) filter.userId = String(userId).trim().toUpperCase();
     if (username) filter.username = String(username).trim();
+    if (name) filter.name = String(name).trim();
     if (deviceId) filter.deviceId = String(deviceId).trim();
     if (gmailId) filter.gmailId = String(gmailId).trim().toLowerCase();
 
     if (Object.keys(filter).length === 0) {
       return res.status(400).json({
-        error: 'Please provide query parameters userId, username, deviceId or gmailId to search users (e.g., /api/users?username=BingoKing_492)'
+        error: 'Please provide query parameters userId, username, name, deviceId or gmailId to search users (e.g., /api/users?name=John)'
       });
     }
 
