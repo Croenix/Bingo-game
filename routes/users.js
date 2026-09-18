@@ -33,13 +33,22 @@ router.post('/', async (req, res, next) => {
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
       return res.status(400).json({ error: 'gmailId must be a valid Gmail address' });
     }
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+
+    // Check device binding: Ensure this deviceId is not already bound to another account (different gmailId)
+    const existingDeviceUser = await User.findOne({ deviceId });
+    if (existingDeviceUser && existingDeviceUser.gmailId !== gmailId) {
+      return res.status(409).json({ error: 'An account already exists for this device ID' });
+    }
 
     let user = await User.findOne({ gmailId });
 
     if (user) {
       // Existing user update: retain existing profileImageUrl unless a non-empty new URL is explicitly provided
       user.name = name;
-      if (deviceId) user.deviceId = deviceId;
+      user.deviceId = deviceId;
       if (profileImageUrl && profileImageUrl.length > 0) {
         user.profileImageUrl = profileImageUrl;
       } else if (!user.profileImageUrl) {
@@ -86,7 +95,12 @@ router.post('/', async (req, res, next) => {
 
     res.json({ message: 'User saved', user: safeUser });
   } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ error: 'Gmail ID or User ID already exists' });
+    if (e.code === 11000) {
+      if (e.keyPattern && e.keyPattern.deviceId) {
+        return res.status(409).json({ error: 'Device ID is already registered to another account' });
+      }
+      return res.status(409).json({ error: 'Gmail ID, User ID, or Device ID already exists' });
+    }
     next(e);
   }
 });

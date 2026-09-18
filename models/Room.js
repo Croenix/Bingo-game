@@ -31,6 +31,8 @@ const roomSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      unique: true,
+      index: true,
       default: 'Bingo Room'
     },
     password: {

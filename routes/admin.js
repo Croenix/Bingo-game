@@ -258,10 +258,18 @@ router.post('/users', requireAdmin, checkDbConnection, async (req, res, next) =>
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
       return res.status(400).json({ error: 'gmailId must be a valid Gmail address' });
     }
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
 
     const existing = await User.findOne({ gmailId });
     if (existing) {
       return res.status(409).json({ error: 'User with this Gmail ID already exists' });
+    }
+
+    const existingDevice = await User.findOne({ deviceId });
+    if (existingDevice) {
+      return res.status(409).json({ error: 'Device ID is already registered to another account' });
     }
 
     const userId = await generateUniqueUserId(User);
@@ -269,7 +277,12 @@ router.post('/users', requireAdmin, checkDbConnection, async (req, res, next) =>
     const user = await User.create({ userId, name, gmailId, deviceId, profileImageUrl, coins, gems });
     res.status(201).json({ message: 'User created successfully', user });
   } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ error: 'Gmail ID already exists' });
+    if (e.code === 11000) {
+      if (e.keyPattern && e.keyPattern.deviceId) {
+        return res.status(409).json({ error: 'Device ID is already registered to another account' });
+      }
+      return res.status(409).json({ error: 'Gmail ID or Device ID already exists' });
+    }
     next(e);
   }
 });

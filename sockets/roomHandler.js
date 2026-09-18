@@ -16,9 +16,24 @@ function registerRoomHandlers(io, socket) {
    */
   socket.on('create_room', async (payload = {}) => {
     try {
-      const { userId, userName, profileImageUrl = '', roomName = 'Bingo Room', capacity = 4, customRoomId, roomId: inputRoomId, password = '', isPublic } = payload;
+      const { userId, userName, profileImageUrl = '', roomName: inputRoomName, name: inputName, capacity = 4, customRoomId, roomId: inputRoomId, password = '', isPublic } = payload;
       if (!userId || !userName) {
         return sendError('create_room', 'userId and userName are required');
+      }
+
+      const roomName = String(inputRoomName || inputName || 'Bingo Room').trim();
+      if (!roomName) {
+        return sendError('create_room', 'Room name is required');
+      }
+
+      // Enforce case-sensitive room name uniqueness
+      const existingNameRoom = await Room.findOne({ name: roomName });
+      if (existingNameRoom) {
+        if (await checkAndRemoveIfExpired(existingNameRoom, io)) {
+          // Room expired and removed
+        } else {
+          return sendError('create_room', `Room with name '${roomName}' already exists`);
+        }
       }
 
       const formattedUserId = String(userId).trim().toUpperCase();
@@ -57,7 +72,7 @@ function registerRoomHandlers(io, socket) {
 
       const newRoom = new Room({
         roomId: finalRoomId,
-        name: String(roomName).trim(),
+        name: roomName,
         password: trimPassword,
         isPublic: roomIsPublic,
         creatorId: formattedUserId,
@@ -102,6 +117,12 @@ function registerRoomHandlers(io, socket) {
       });
     } catch (err) {
       console.error('Socket create_room error:', err);
+      if (err.code === 11000) {
+        if (err.keyPattern && err.keyPattern.name) {
+          return sendError('create_room', `Room with name '${String(payload.roomName || payload.name || '').trim()}' already exists`);
+        }
+        return sendError('create_room', 'Room ID or Room Name already exists');
+      }
       sendError('create_room', err.message || 'Failed to create room');
     }
   });

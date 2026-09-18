@@ -42,6 +42,21 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'creatorId and creatorName are required' });
     }
 
+    const roomName = String(name || '').trim();
+    if (!roomName) {
+      return res.status(400).json({ error: 'Room name is required' });
+    }
+
+    // Enforce case-sensitive room name uniqueness
+    const existingNameRoom = await Room.findOne({ name: roomName });
+    if (existingNameRoom) {
+      if (await checkAndRemoveIfExpired(existingNameRoom, req.app.get('io'))) {
+        // Previously existing room with this name has expired and was removed
+      } else {
+        return res.status(409).json({ error: `Room with name '${roomName}' already exists` });
+      }
+    }
+
     const formattedCreatorId = String(creatorId).trim().toUpperCase();
 
     // Retrieve registered user profile if available to prevent name spoofing
@@ -77,7 +92,7 @@ router.post('/', async (req, res, next) => {
 
     const room = new Room({
       roomId: finalRoomId,
-      name: String(name).trim(),
+      name: roomName,
       password: trimPassword,
       isPublic: roomIsPublic,
       creatorId: formattedCreatorId,
@@ -100,7 +115,7 @@ router.post('/', async (req, res, next) => {
     });
 
     await room.save();
-    console.log(`[Room] Created room ${finalRoomId} (expiresAt: ${expiresAt.toISOString()})`);
+    console.log(`[Room] Created room ${finalRoomId} (${roomName}) (expiresAt: ${expiresAt.toISOString()})`);
 
     const vivoxUserUri = getVivoxUserUri(formattedCreatorId);
     const vivoxToken = generateVivoxToken({
@@ -121,6 +136,12 @@ router.post('/', async (req, res, next) => {
       }
     });
   } catch (err) {
+    if (err.code === 11000) {
+      if (err.keyPattern && err.keyPattern.name) {
+        return res.status(409).json({ error: `Room with name '${String(req.body.name || '').trim()}' already exists` });
+      }
+      return res.status(409).json({ error: 'Room ID or Room Name already exists' });
+    }
     next(err);
   }
 });
