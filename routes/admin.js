@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Challenge = require('../models/Challenge');
 const { requireAdmin } = require('../middleware/adminAuth');
 const { generateUniqueUserId } = require('../utils/userIdGenerator');
+const { generateUniqueUsername } = require('../utils/usernameGenerator');
 const { generateDefaultAvatar } = require('../utils/avatarGenerator');
 const {
   getProfilePictures,
@@ -248,13 +249,11 @@ router.get('/system', requireAdmin, async (req, res, next) => {
 // Admin Create User (with Coins, Gems & Device ID)
 router.post('/users', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
-    const name = String(req.body.name || '').trim();
     const gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
-    const coins = Math.max(Number(req.body.coins) || 0, 0);
+    const coins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
     const gems = Math.max(Number(req.body.gems) || 0, 0);
 
-    if (!name) return res.status(400).json({ error: 'name is required' });
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
       return res.status(400).json({ error: 'gmailId must be a valid Gmail address' });
     }
@@ -273,15 +272,20 @@ router.post('/users', requireAdmin, checkDbConnection, async (req, res, next) =>
     }
 
     const userId = await generateUniqueUserId(User);
+    const username = await generateUniqueUsername(User, req.body.username);
+    const name = String(req.body.name || '').trim() || username;
     const profileImageUrl = String(req.body.profileImageUrl || '').trim() || generateDefaultAvatar(userId);
-    const user = await User.create({ userId, name, gmailId, deviceId, profileImageUrl, coins, gems });
+    const user = await User.create({ userId, username, name, gmailId, deviceId, profileImageUrl, coins, gems });
     res.status(201).json({ message: 'User created successfully', user });
   } catch (e) {
     if (e.code === 11000) {
       if (e.keyPattern && e.keyPattern.deviceId) {
         return res.status(409).json({ error: 'Device ID is already registered to another account' });
       }
-      return res.status(409).json({ error: 'Gmail ID or Device ID already exists' });
+      if (e.keyPattern && e.keyPattern.username) {
+        return res.status(409).json({ error: 'Username is already taken' });
+      }
+      return res.status(409).json({ error: 'Gmail ID, User ID, Username, or Device ID already exists' });
     }
     next(e);
   }
@@ -298,6 +302,7 @@ router.get('/users', requireAdmin, checkDbConnection, async (req, res, next) => 
       ? {
           $or: [
             { userId: { $regex: escaped, $options: 'i' } },
+            { username: { $regex: escaped, $options: 'i' } },
             { name: { $regex: escaped, $options: 'i' } },
             { gmailId: { $regex: escaped, $options: 'i' } },
             { deviceId: { $regex: escaped, $options: 'i' } }
@@ -326,10 +331,15 @@ router.get('/users/:id', requireAdmin, checkDbConnection, async (req, res, next)
   }
 });
 
-// Update User (including Coins, Gems & Device ID)
+// Update User (including Username, Coins, Gems & Device ID)
 router.patch('/users/:id', requireAdmin, checkDbConnection, async (req, res, next) => {
   try {
     const update = {};
+    if (req.body.username !== undefined) {
+      const username = String(req.body.username).trim();
+      if (!username) return res.status(400).json({ error: 'username cannot be empty' });
+      update.username = username;
+    }
     if (req.body.name !== undefined) {
       const name = String(req.body.name).trim();
       if (!name) return res.status(400).json({ error: 'name cannot be empty' });
@@ -356,7 +366,10 @@ router.patch('/users/:id', requireAdmin, checkDbConnection, async (req, res, nex
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json({ message: 'User updated successfully', user });
   } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ error: 'Gmail ID already exists' });
+    if (e.code === 11000) {
+      if (e.keyPattern && e.keyPattern.username) return res.status(409).json({ error: 'Username already exists' });
+      return res.status(409).json({ error: 'Gmail ID or Username already exists' });
+    }
     if (e.name === 'CastError') return res.status(400).json({ error: 'Invalid user ID' });
     next(e);
   }

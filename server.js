@@ -89,6 +89,17 @@ async function start() {
     await migrateLegacyUsers();
   } catch (e) {
     console.error('MongoDB connection failed (Server continues running):', e.message);
+    try {
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      console.log('Initializing local MongoMemoryServer fallback...');
+      const mongoServer = await MongoMemoryServer.create();
+      const mongoUri = mongoServer.getUri();
+      await mongoose.connect(mongoUri);
+      console.log('MongoDB local in-memory database connected successfully');
+      await migrateLegacyUsers();
+    } catch (fallbackErr) {
+      console.error('Fallback DB connection skipped:', fallbackErr.message);
+    }
   }
 }
 

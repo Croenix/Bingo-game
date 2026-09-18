@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const { generateUniqueUserId } = require('../utils/userIdGenerator');
+const { generateUniqueUsername } = require('../utils/usernameGenerator');
 const { generateDefaultAvatar } = require('../utils/avatarGenerator');
 const router = express.Router();
 
@@ -19,17 +20,16 @@ router.use(checkDbConnection);
 
 /**
  * POST /api/users
- * Create or update user profile with name, gmailId, and deviceId.
- * Automatically generates a unique userId (BGO-XXXXXXXX) and default DiceBear Clay avatar for new users.
+ * Create or update user profile with name, username, gmailId, and deviceId.
+ * Automatically grants 1000 default coins and generates a unique Bingo gaming username for new accounts.
  */
 router.post('/', async (req, res, next) => {
   try {
-    const name = String(req.body.name || '').trim();
     const gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
+    const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : undefined;
     const profileImageUrl = req.body.profileImageUrl !== undefined ? String(req.body.profileImageUrl).trim() : undefined;
 
-    if (!name) return res.status(400).json({ error: 'name is required' });
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
       return res.status(400).json({ error: 'gmailId must be a valid Gmail address' });
     }
@@ -46,18 +46,37 @@ router.post('/', async (req, res, next) => {
     let user = await User.findOne({ gmailId });
 
     if (user) {
-      // Existing user update: retain existing profileImageUrl unless a non-empty new URL is explicitly provided
-      user.name = name;
+      // Existing user update
+      if (req.body.name !== undefined && String(req.body.name).trim()) {
+        user.name = String(req.body.name).trim();
+      }
       user.deviceId = deviceId;
+
       if (profileImageUrl && profileImageUrl.length > 0) {
         user.profileImageUrl = profileImageUrl;
       } else if (!user.profileImageUrl) {
         user.profileImageUrl = generateDefaultAvatar(user.userId);
       }
 
-      // Backfill userId for legacy user if missing
+      // Backfill userId if missing
       if (!user.userId) {
         user.userId = await generateUniqueUserId(User);
+      }
+
+      // Backfill or update username if requested/missing
+      if (!user.username) {
+        user.username = await generateUniqueUsername(User, requestedUsername);
+      } else if (requestedUsername && requestedUsername !== user.username) {
+        const usernameTaken = await User.findOne({ username: requestedUsername, _id: { $ne: user._id } });
+        if (usernameTaken) {
+          return res.status(409).json({ error: 'Username is already taken by another user' });
+        }
+        user.username = requestedUsername;
+      }
+
+      // Ensure name is present
+      if (!user.name) {
+        user.name = user.username;
       }
 
       await user.save();
@@ -65,25 +84,36 @@ router.post('/', async (req, res, next) => {
       // New user creation with collision retry loop
       let saved = false;
       let attempts = 0;
+
+      // Determine initial name / username
+      let inputName = String(req.body.name || '').trim();
+
       while (!saved && attempts < 5) {
         attempts++;
         try {
           const newUserId = await generateUniqueUserId(User);
+          const newUsername = await generateUniqueUsername(User, requestedUsername);
+          const finalName = inputName || newUsername;
           const defaultAvatar = profileImageUrl || generateDefaultAvatar(newUserId);
+          const initialCoins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
+
           user = new User({
             userId: newUserId,
-            name,
+            username: newUsername,
+            name: finalName,
             gmailId,
             deviceId,
             profileImageUrl: defaultAvatar,
-            coins: 0,
+            coins: initialCoins,
             gems: 0
           });
           await user.save();
           saved = true;
         } catch (saveErr) {
-          if (saveErr.code === 11000 && saveErr.keyPattern && saveErr.keyPattern.userId) {
-            continue;
+          if (saveErr.code === 11000 && saveErr.keyPattern) {
+            if (saveErr.keyPattern.userId || saveErr.keyPattern.username) {
+              continue; // Retry with a newly generated username/userId
+            }
           }
           throw saveErr;
         }
@@ -99,7 +129,10 @@ router.post('/', async (req, res, next) => {
       if (e.keyPattern && e.keyPattern.deviceId) {
         return res.status(409).json({ error: 'Device ID is already registered to another account' });
       }
-      return res.status(409).json({ error: 'Gmail ID, User ID, or Device ID already exists' });
+      if (e.keyPattern && e.keyPattern.username) {
+        return res.status(409).json({ error: 'Username is already taken' });
+      }
+      return res.status(409).json({ error: 'Gmail ID, User ID, Username, or Device ID already exists' });
     }
     next(e);
   }
@@ -128,8 +161,30 @@ router.get('/id/:userId', async (req, res, next) => {
 });
 
 /**
+ * GET /api/users/username/:username
+ * Fetch complete user profile by gaming username (case-sensitive check).
+ */
+router.get('/username/:username', async (req, res, next) => {
+  try {
+    const username = String(req.params.username || '').trim();
+    if (!username) {
+      return res.status(400).json({ ok: false, message: 'username is required' });
+    }
+
+    const user = await User.findOne({ username }).select('-__v').lean();
+    if (!user) {
+      return res.status(404).json({ ok: false, message: 'User not found' });
+    }
+
+    res.json({ ok: true, user });
+  } catch (e) {
+    next(e);
+  }
+});
+
+/**
  * PATCH /api/users/id/:userId
- * Update user profile (name, profileImageUrl) by unique User ID.
+ * Update user profile (name, username, profileImageUrl) by unique User ID.
  * Protects userId, _id, coins, gems, and gmailId from unauthorized changes.
  */
 router.patch('/id/:userId', async (req, res, next) => {
@@ -142,6 +197,20 @@ router.patch('/id/:userId', async (req, res, next) => {
     const user = await User.findOne({ userId });
     if (!user) {
       return res.status(404).json({ ok: false, message: 'User not found' });
+    }
+
+    if (req.body.username !== undefined) {
+      const newUsername = String(req.body.username).trim();
+      if (!newUsername) {
+        return res.status(400).json({ ok: false, message: 'username cannot be empty' });
+      }
+      if (newUsername !== user.username) {
+        const usernameTaken = await User.findOne({ username: newUsername, _id: { $ne: user._id } });
+        if (usernameTaken) {
+          return res.status(409).json({ ok: false, message: 'Username is already taken' });
+        }
+        user.username = newUsername;
+      }
     }
 
     if (req.body.name !== undefined) {
@@ -171,6 +240,9 @@ router.patch('/id/:userId', async (req, res, next) => {
       user: safeUser
     });
   } catch (e) {
+    if (e.code === 11000 && e.keyPattern && e.keyPattern.username) {
+      return res.status(409).json({ ok: false, message: 'Username is already taken' });
+    }
     next(e);
   }
 });
@@ -221,20 +293,21 @@ router.get('/gmail/:gmailId', async (req, res, next) => {
 
 /**
  * GET /api/users
- * Search user by query param (e.g. /api/users?userId=BGO-12345678 or /api/users?deviceId=device_123 or /api/users?gmailId=user@gmail.com)
+ * Search user by query param (e.g. /api/users?userId=BGO-12345678 or /api/users?username=BingoKing_492 or /api/users?deviceId=device_123 or /api/users?gmailId=user@gmail.com)
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { userId, deviceId, gmailId } = req.query;
+    const { userId, username, deviceId, gmailId } = req.query;
 
     const filter = {};
     if (userId) filter.userId = String(userId).trim().toUpperCase();
+    if (username) filter.username = String(username).trim();
     if (deviceId) filter.deviceId = String(deviceId).trim();
     if (gmailId) filter.gmailId = String(gmailId).trim().toLowerCase();
 
     if (Object.keys(filter).length === 0) {
       return res.status(400).json({
-        error: 'Please provide query parameters userId, deviceId or gmailId to search users (e.g., /api/users?userId=BGO-XXXXXXXX)'
+        error: 'Please provide query parameters userId, username, deviceId or gmailId to search users (e.g., /api/users?username=BingoKing_492)'
       });
     }
 

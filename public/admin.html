@@ -350,6 +350,7 @@
                     <tr>
                       <th width="50">#</th>
                       <th>User Profile</th>
+                      <th>Username 🎮</th>
                       <th>Gmail ID</th>
                       <th>Device ID</th>
                       <th>Coins 🟡</th>
@@ -361,7 +362,7 @@
                   </thead>
                   <tbody id="userTableBody">
                     <tr>
-                      <td colspan="9" class="text-center py-4">
+                      <td colspan="10" class="text-center py-4">
                         <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
                         <p class="mt-2">Loading user data...</p>
                       </td>
@@ -758,9 +759,15 @@
         <form id="userForm">
           <input type="hidden" id="editUserId">
           <div class="modal-body">
-            <div class="form-group">
-              <label for="modalUserName">User Full Name *</label>
-              <input type="text" id="modalUserName" placeholder="e.g. John Doe" required>
+            <div class="grid-2">
+              <div class="form-group">
+                <label for="modalUserName">User Full Name *</label>
+                <input type="text" id="modalUserName" placeholder="e.g. John Doe" required>
+              </div>
+              <div class="form-group">
+                <label for="modalUsername"><i class="fa-solid fa-gamepad text-purple"></i> Gaming Username</label>
+                <input type="text" id="modalUsername" placeholder="Auto-generated if blank (e.g. BingoKing_492)">
+              </div>
             </div>
             <div class="form-group">
               <label for="modalGmailId">Gmail Address (@gmail.com) *</label>
@@ -775,7 +782,7 @@
             <div class="grid-2 mt-2">
               <div class="form-group">
                 <label for="modalCoins"><i class="fa-solid fa-coins text-amber"></i> Coins (🟡)</label>
-                <input type="number" id="modalCoins" min="0" value="0" placeholder="100">
+                <input type="number" id="modalCoins" min="0" value="1000" placeholder="1000">
               </div>
               <div class="form-group">
                 <label for="modalGems"><i class="fa-solid fa-gem text-cyan"></i> Gems (💎)</label>
