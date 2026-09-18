@@ -31,7 +31,7 @@ async function migrateLegacyUsers() {
         user.userId = await generateUniqueUserId(User);
       }
       if (!user.username) {
-        user.username = await generateUniqueUsername(User);
+        user.username = await generateUniqueUsername(User, user.name);
       }
       if (!user.name) {
         user.name = user.username;

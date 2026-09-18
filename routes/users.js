@@ -27,7 +27,10 @@ router.post('/', async (req, res, next) => {
   try {
     const gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
-    const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : undefined;
+    const inputName = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
+    const requestedUsername = (req.body.username !== undefined && String(req.body.username).trim())
+      ? String(req.body.username).trim()
+      : inputName;
     const profileImageUrl = req.body.profileImageUrl !== undefined ? String(req.body.profileImageUrl).trim() : undefined;
 
     if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
@@ -47,8 +50,8 @@ router.post('/', async (req, res, next) => {
 
     if (user) {
       // Existing user update
-      if (req.body.name !== undefined && String(req.body.name).trim()) {
-        user.name = String(req.body.name).trim();
+      if (inputName) {
+        user.name = inputName;
       }
       user.deviceId = deviceId;
 
@@ -65,7 +68,7 @@ router.post('/', async (req, res, next) => {
 
       // Backfill or update username if requested/missing
       if (!user.username) {
-        user.username = await generateUniqueUsername(User, requestedUsername);
+        user.username = await generateUniqueUsername(User, requestedUsername || user.name);
       } else if (requestedUsername && requestedUsername !== user.username) {
         const usernameTaken = await User.findOne({ username: requestedUsername, _id: { $ne: user._id } });
         if (usernameTaken) {
@@ -86,14 +89,14 @@ router.post('/', async (req, res, next) => {
       let attempts = 0;
 
       // Determine initial name / username
-      let inputName = String(req.body.name || '').trim();
+      let finalInputName = inputName || '';
 
       while (!saved && attempts < 5) {
         attempts++;
         try {
           const newUserId = await generateUniqueUserId(User);
-          const newUsername = await generateUniqueUsername(User, requestedUsername);
-          const finalName = inputName || newUsername;
+          const newUsername = await generateUniqueUsername(User, requestedUsername || finalInputName);
+          const finalName = finalInputName || newUsername;
           const defaultAvatar = profileImageUrl || generateDefaultAvatar(newUserId);
           const initialCoins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
 
