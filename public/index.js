@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Bingo Arena - Main Game Client JavaScript
+   Bingo Arena - Main Game Client JavaScript (Multiplayer Turn-Based)
    ========================================================================== */
 
 // Global State
@@ -8,7 +8,12 @@ let socket = null;
 let currentRoom = null;
 let myBingoCard = [];
 let markedIndexes = new Set();
+let pickedNumbersSet = new Set();
 let completedLinesCount = 0;
+
+let roomStatus = 'waiting'; // 'waiting', 'playing', 'finished'
+let currentTurnUserId = null;
+let currentTurnName = '';
 
 // On DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
@@ -42,7 +47,7 @@ function checkSavedSession() {
     try {
       const savedUser = JSON.parse(savedUserJson);
       if (savedUser && savedUser.gmailId) {
-        // Silent re-auth with backend to fetch fresh profile details
+        // Silent re-auth with backend
         loginUser({
           gmailId: savedUser.gmailId,
           name: savedUser.name,
@@ -54,7 +59,6 @@ function checkSavedSession() {
       console.error('Failed to parse saved session:', e);
     }
   }
-  // If no saved session, open Auth Modal
   openModal('authModal');
 }
 
@@ -146,7 +150,7 @@ function updateUserNavUI() {
 }
 
 // ==========================================================================
-// Lobby Data Fetching (Challenges & Rooms)
+// Lobby Data Fetching
 // ==========================================================================
 
 async function fetchChallenges() {
@@ -235,7 +239,7 @@ async function fetchRooms() {
 }
 
 // ==========================================================================
-// Socket.io Real-Time Room & Game Event Handling
+// Socket.io Real-Time Event Handlers
 // ==========================================================================
 
 function initSocket() {
@@ -265,7 +269,7 @@ function initSocket() {
   socket.on('player_joined', (data) => {
     if (currentRoom) {
       currentRoom.players = data.players || [];
-      renderPlayersStrip();
+      updateTurnStateUI();
       showToast(`${data.player?.name || 'A player'} joined the room!`, 'info');
     }
   });
@@ -273,9 +277,64 @@ function initSocket() {
   socket.on('player_left', (data) => {
     if (currentRoom) {
       currentRoom.players = data.players || [];
-      renderPlayersStrip();
+      updateTurnStateUI();
       showToast('A player left the room.', 'info');
     }
+  });
+
+  socket.on('game_started', (data) => {
+    roomStatus = 'playing';
+    currentTurnUserId = data.currentTurnUserId;
+    currentTurnName = data.currentTurnName;
+    if (currentRoom) {
+      currentRoom.status = 'playing';
+      if (data.players) currentRoom.players = data.players;
+    }
+
+    const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+    showToast(`🎮 GAME STARTED! ${isMyTurn ? 'YOU start first!' : currentTurnName + ' starts first!'}`, 'success');
+    updateTurnStateUI();
+  });
+
+  socket.on('number_picked', (data) => {
+    const { number, pickedBy, pickedByUserId, pickedNumbers, nextTurnUserId, nextTurnName } = data;
+
+    // Show Last Drawn Ball Banner
+    const banner = document.getElementById('drawnBallBanner');
+    banner.style.display = 'flex';
+    document.getElementById('drawnBallNumber').textContent = number;
+    document.getElementById('drawnBallPicker').textContent = `by ${pickedBy}`;
+
+    // Mark number on board
+    pickedNumbersSet.add(number);
+    const tileIdx = myBingoCard.indexOf(number);
+    if (tileIdx !== -1) {
+      markedIndexes.add(tileIdx);
+    }
+
+    currentTurnUserId = nextTurnUserId;
+    currentTurnName = nextTurnName;
+
+    updateTurnStateUI();
+    renderBingoBoard();
+    checkCompletedLines();
+
+    const isMyTurnNow = currentUser && currentUser.userId === currentTurnUserId;
+    if (isMyTurnNow) {
+      showToast(`🎯 Number ${number} picked! IT IS YOUR TURN NOW! 🔥`, 'success');
+    } else {
+      showToast(`🎯 ${pickedBy} picked ${number}. ${nextTurnName}'s turn!`, 'info');
+    }
+  });
+
+  socket.on('bingo_claimed', (data) => {
+    roomStatus = 'finished';
+    const winnerName = data.winnerName || 'Player';
+    showToast(`🎉 ${winnerName} claimed BINGO and won!`, 'success');
+
+    document.getElementById('victoryMessage').textContent = data.message || `${winnerName} completed 5 lines and won!`;
+    openModal('victoryModal');
+    if (window.confetti) confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
   });
 
   socket.on('room_deleted', (data) => {
@@ -295,18 +354,31 @@ function handleRoomJoinedOrCreated(data) {
   if (data.myBingoCard && Array.isArray(data.myBingoCard.numbers)) {
     myBingoCard = data.myBingoCard.numbers;
   } else {
-    // Generate fallback 1..25 shuffled numbers if needed
     myBingoCard = Array.from({ length: 25 }, (_, i) => i + 1).sort(() => Math.random() - 0.5);
   }
 
   markedIndexes.clear();
+  pickedNumbersSet.clear();
   completedLinesCount = 0;
-  updateBingoLinesUI();
+
+  roomStatus = currentRoom.status || 'waiting';
+  const gameData = currentRoom.gameData || {};
+  currentTurnUserId = gameData.currentTurnUserId || null;
+  currentTurnName = gameData.currentTurnName || '';
+
+  if (Array.isArray(gameData.pickedNumbers)) {
+    gameData.pickedNumbers.forEach(n => {
+      pickedNumbersSet.add(n);
+      const idx = myBingoCard.indexOf(n);
+      if (idx !== -1) markedIndexes.add(idx);
+    });
+  }
 
   document.getElementById('gameRoomName').textContent = currentRoom.name;
   document.getElementById('gameRoomCode').textContent = currentRoom.roomId;
 
-  renderPlayersStrip();
+  updateBingoLinesUI();
+  updateTurnStateUI();
   renderBingoBoard();
 
   switchView('gameView');
@@ -315,37 +387,86 @@ function handleRoomJoinedOrCreated(data) {
 }
 
 // ==========================================================================
-// Interactive 5x5 Bingo Board Logic
+// Interactive 5x5 Bingo Board & Turn Logic
 // ==========================================================================
+
+function updateTurnStateUI() {
+  const hostBtn = document.getElementById('hostStartBtn');
+  const statusText = document.getElementById('gameStatusText');
+  const isHost = currentUser && currentRoom && (currentUser.userId === currentRoom.creatorId);
+
+  if (roomStatus === 'waiting') {
+    if (isHost) {
+      hostBtn.style.display = 'inline-flex';
+      statusText.textContent = `Waiting for players (${currentRoom.players ? currentRoom.players.length : 1}/${currentRoom.capacity})... Or click "START GAME" now!`;
+    } else {
+      hostBtn.style.display = 'none';
+      statusText.textContent = `Waiting for Host (${currentRoom ? currentRoom.creatorName : 'Host'}) to start game...`;
+    }
+  } else if (roomStatus === 'playing') {
+    hostBtn.style.display = 'none';
+    const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+    if (isMyTurn) {
+      statusText.textContent = '🕹️ YOUR TURN! Click any number on your board to pick it!';
+    } else {
+      statusText.textContent = `⏳ Waiting for ${currentTurnName}'s turn...`;
+    }
+  } else if (roomStatus === 'finished') {
+    hostBtn.style.display = 'none';
+    statusText.textContent = '🏆 Game Finished!';
+  }
+
+  renderPlayersStrip();
+}
 
 function renderBingoBoard() {
   const grid = document.getElementById('bingoGrid');
   grid.innerHTML = '';
 
+  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+  const isPlaying = roomStatus === 'playing';
+
   myBingoCard.forEach((num, index) => {
     const tile = document.createElement('div');
-    tile.className = 'bingo-tile' + (markedIndexes.has(index) ? ' marked' : '');
+    const isMarked = markedIndexes.has(index);
+    const isDisabled = !isPlaying || !isMyTurn || isMarked;
+
+    tile.className = 'bingo-tile' + (isMarked ? ' marked' : '') + (isDisabled && !isMarked ? ' disabled-tile' : '');
     tile.textContent = num;
-    tile.onclick = () => toggleTileMark(index);
+    tile.onclick = () => handleTileClick(index, num);
     grid.appendChild(tile);
   });
 }
 
-function toggleTileMark(index) {
-  if (markedIndexes.has(index)) {
-    markedIndexes.delete(index);
-  } else {
-    markedIndexes.add(index);
+function handleTileClick(index, num) {
+  if (roomStatus !== 'playing') {
+    showToast('Game has not started yet!', 'error');
+    return;
   }
 
-  renderBingoBoard();
-  checkCompletedLines();
+  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+  if (!isMyTurn) {
+    showToast(`It's not your turn! Waiting for ${currentTurnName || 'other player'}...`, 'error');
+    return;
+  }
+
+  if (markedIndexes.has(index) || pickedNumbersSet.has(num)) {
+    showToast(`Number ${num} is already marked!`, 'info');
+    return;
+  }
+
+  // Send turn action to server via socket!
+  socket.emit('pick_number', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId,
+    number: num
+  });
 }
 
 function checkCompletedLines() {
   let lines = 0;
 
-  // 1. Check Rows (5 rows)
+  // 1. Check Rows
   for (let r = 0; r < 5; r++) {
     let rowComplete = true;
     for (let c = 0; c < 5; c++) {
@@ -354,7 +475,7 @@ function checkCompletedLines() {
     if (rowComplete) lines++;
   }
 
-  // 2. Check Columns (5 columns)
+  // 2. Check Columns
   for (let c = 0; c < 5; c++) {
     let colComplete = true;
     for (let r = 0; r < 5; r++) {
@@ -363,14 +484,14 @@ function checkCompletedLines() {
     if (colComplete) lines++;
   }
 
-  // 3. Diagonal 1 (top-left to bottom-right)
+  // 3. Diagonal 1
   let d1Complete = true;
   for (let i = 0; i < 5; i++) {
     if (!markedIndexes.has(i * 5 + i)) { d1Complete = false; break; }
   }
   if (d1Complete) lines++;
 
-  // 4. Diagonal 2 (top-right to bottom-left)
+  // 4. Diagonal 2
   let d2Complete = true;
   for (let i = 0; i < 5; i++) {
     if (!markedIndexes.has(i * 5 + (4 - i))) { d2Complete = false; break; }
@@ -395,7 +516,7 @@ function updateBingoLinesUI() {
   });
 
   const claimBtn = document.getElementById('claimBingoBtn');
-  if (completedLinesCount >= 5) {
+  if (completedLinesCount >= 5 && roomStatus === 'playing') {
     claimBtn.disabled = false;
     claimBtn.classList.add('glow-effect');
   } else {
@@ -405,18 +526,20 @@ function updateBingoLinesUI() {
 }
 
 function claimBingo() {
-  if (completedLinesCount < 5) return;
+  if (completedLinesCount < 5 || !currentRoom) return;
 
-  // Trigger Victory Confetti Animation
-  if (window.confetti) {
-    confetti({
-      particleCount: 120,
-      spread: 80,
-      origin: { y: 0.6 }
-    });
-  }
+  socket.emit('claim_bingo', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId
+  });
+}
 
-  openModal('victoryModal');
+function handleHostStartGame() {
+  if (!currentRoom || !currentUser) return;
+  socket.emit('start_game', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId
+  });
 }
 
 function closeVictoryAndLeave() {
@@ -429,10 +552,7 @@ function closeVictoryAndLeave() {
 // ==========================================================================
 
 function quickCreateRoom(roomName) {
-  if (!currentUser) {
-    openModal('authModal');
-    return;
-  }
+  if (!currentUser) return openModal('authModal');
 
   socket.emit('create_room', {
     userId: currentUser.userId,
@@ -497,7 +617,7 @@ function handleJoinRoomSubmit(event) {
 }
 
 function confirmLeaveRoom() {
-  if (currentRoom && socket) {
+  if (currentRoom && socket && currentUser) {
     socket.emit('leave_room', {
       roomId: currentRoom.roomId,
       userId: currentUser.userId
@@ -508,6 +628,12 @@ function confirmLeaveRoom() {
 
 function leaveRoomUI() {
   currentRoom = null;
+  roomStatus = 'waiting';
+  currentTurnUserId = null;
+  currentTurnName = '';
+  markedIndexes.clear();
+  pickedNumbersSet.clear();
+  document.getElementById('drawnBallBanner').style.display = 'none';
   switchView('lobbyView');
   fetchRooms();
 }
@@ -516,13 +642,19 @@ function renderPlayersStrip() {
   const strip = document.getElementById('playersStrip');
   if (!currentRoom || !currentRoom.players) return;
 
-  strip.innerHTML = currentRoom.players.map(p => `
-    <div class="player-badge ${p.isCreator ? 'is-creator' : ''}">
-      <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="badge-avatar" />
-      <span>${escapeHtml(p.name)}</span>
-      ${p.isCreator ? '👑' : ''}
-    </div>
-  `).join('');
+  strip.innerHTML = currentRoom.players.map(p => {
+    const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
+    const isCreator = p.isCreator || p.userId === currentRoom.creatorId;
+
+    return `
+      <div class="player-badge ${isCreator ? 'is-creator' : ''} ${isTurn ? 'is-turn' : ''}">
+        <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="badge-avatar" />
+        <span>${escapeHtml(p.name)}</span>
+        ${isCreator ? '👑' : ''}
+        ${isTurn ? ' 🎲' : ''}
+      </div>
+    `;
+  }).join('');
 }
 
 // ==========================================================================

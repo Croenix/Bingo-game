@@ -119,6 +119,9 @@
           </div>
 
           <div class="game-actions">
+            <button id="hostStartBtn" class="btn btn-primary btn-sm glow-effect" style="display: none;" onclick="handleHostStartGame()">
+              ▶️ START GAME
+            </button>
             <button class="btn btn-danger btn-sm" onclick="confirmLeaveRoom()">Leave</button>
           </div>
         </div>
@@ -126,6 +129,16 @@
         <!-- Players Roster Horizontal Strip -->
         <div class="players-strip" id="playersStrip">
           <!-- Dynamically populated players badges -->
+        </div>
+
+        <!-- Last Drawn Ball Banner -->
+        <div id="drawnBallBanner" class="drawn-ball-banner" style="display: none;">
+          <div class="ball-icon-spin">🎯</div>
+          <div class="ball-details">
+            <span class="ball-label">LAST PICKED NUMBER</span>
+            <span id="drawnBallNumber" class="ball-number">--</span>
+          </div>
+          <div id="drawnBallPicker" class="ball-picker-name">by Player</div>
         </div>
 
         <!-- B-I-N-G-O Progress Header -->
@@ -153,7 +166,7 @@
         <div class="game-footer">
           <div class="status-indicator">
             <span class="pulse-dot"></span>
-            <span id="gameStatusText">Click numbers on your ticket to mark them!</span>
+            <span id="gameStatusText">Waiting for players to join...</span>
           </div>
 
           <button id="claimBingoBtn" class="btn btn-gold btn-xl bingo-claim-btn" onclick="claimBingo()" disabled>

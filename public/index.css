@@ -460,6 +460,73 @@ body {
   border-color: var(--gold);
 }
 
+.player-badge.is-turn {
+  border-color: var(--accent-cyan);
+  background: rgba(6, 182, 212, 0.2);
+  box-shadow: 0 0 12px var(--accent-cyan-glow);
+  animation: turnPulse 1.5s infinite alternate;
+}
+
+@keyframes turnPulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.04); }
+}
+
+/* Last Drawn Ball Banner */
+.drawn-ball-banner {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(139, 92, 246, 0.25));
+  border: 2px solid var(--accent-cyan);
+  border-radius: var(--radius-md);
+  padding: 0.8rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  box-shadow: 0 0 20px var(--accent-cyan-glow);
+  animation: bounceIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.ball-icon-spin {
+  font-size: 2.2rem;
+  animation: spin 3s linear infinite;
+}
+
+.ball-details {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ball-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.ball-number {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--gold);
+  text-shadow: 0 0 16px var(--gold-glow);
+  line-height: 1;
+}
+
+.ball-picker-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-full);
+}
+
+.bingo-tile.disabled-tile {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
 .player-badge .badge-avatar {
   width: 24px;
   height: 24px;

@@ -258,9 +258,178 @@ function registerRoomHandlers(io, socket) {
         playersCount: sanitizedRoom.players.length,
         capacity: updatedRoom.capacity
       });
+
+      // Auto-start game if capacity limit is reached
+      if (updatedRoom.status === 'waiting' && updatedRoom.players.length >= updatedRoom.capacity) {
+        const firstPlayer = updatedRoom.players[Math.floor(Math.random() * updatedRoom.players.length)];
+        updatedRoom.status = 'playing';
+        updatedRoom.gameData = {
+          currentTurnUserId: firstPlayer.userId,
+          currentTurnName: firstPlayer.name,
+          pickedNumbers: [],
+          lastPickedNumber: null,
+          lastPickedBy: null
+        };
+        await updatedRoom.save();
+
+        io.to(formattedRoomId).emit('game_started', {
+          roomId: formattedRoomId,
+          status: 'playing',
+          currentTurnUserId: firstPlayer.userId,
+          currentTurnName: firstPlayer.name,
+          players: updatedRoom.players
+        });
+      }
     } catch (err) {
       console.error('Socket join_room error:', err);
       sendError('join_room', err.message || 'Failed to join room');
+    }
+  });
+
+  /**
+   * Event: start_game (Host manually starts game before room reaches full capacity)
+   * Payload: { roomId, userId }
+   */
+  socket.on('start_game', async (payload = {}) => {
+    try {
+      const { roomId, userId } = payload;
+      if (!roomId || !userId) return sendError('start_game', 'roomId and userId are required');
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('start_game', 'Room not found');
+
+      if (room.creatorId !== formattedUserId) {
+        return sendError('start_game', 'Only the room host can start the game');
+      }
+
+      if (room.players.length < 1) {
+        return sendError('start_game', 'Not enough players in room');
+      }
+
+      const firstPlayer = room.players[Math.floor(Math.random() * room.players.length)];
+      room.status = 'playing';
+      room.gameData = {
+        currentTurnUserId: firstPlayer.userId,
+        currentTurnName: firstPlayer.name,
+        pickedNumbers: [],
+        lastPickedNumber: null,
+        lastPickedBy: null
+      };
+
+      await room.save();
+
+      io.to(formattedRoomId).emit('game_started', {
+        roomId: formattedRoomId,
+        status: 'playing',
+        currentTurnUserId: firstPlayer.userId,
+        currentTurnName: firstPlayer.name,
+        players: room.players
+      });
+    } catch (err) {
+      console.error('Socket start_game error:', err);
+      sendError('start_game', err.message || 'Failed to start game');
+    }
+  });
+
+  /**
+   * Event: pick_number (Active player picks a tile number)
+   * Payload: { roomId, userId, number }
+   */
+  socket.on('pick_number', async (payload = {}) => {
+    try {
+      const { roomId, userId, number } = payload;
+      if (!roomId || !userId || number === undefined) {
+        return sendError('pick_number', 'roomId, userId, and number are required');
+      }
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('pick_number', 'Room not found');
+
+      if (room.status !== 'playing') {
+        return sendError('pick_number', 'Game is not in active playing state');
+      }
+
+      const num = Number(number);
+      if (isNaN(num) || num < 1 || num > 25) {
+        return sendError('pick_number', 'Invalid number picked');
+      }
+
+      const gameData = room.gameData || {};
+      if (gameData.currentTurnUserId !== formattedUserId) {
+        return sendError('pick_number', `It is not your turn! Waiting for ${gameData.currentTurnName || 'another player'}`);
+      }
+
+      const pickedNumbers = Array.isArray(gameData.pickedNumbers) ? gameData.pickedNumbers : [];
+      if (pickedNumbers.includes(num)) {
+        return sendError('pick_number', `Number ${num} has already been picked`);
+      }
+
+      const activePlayer = room.players.find(p => p.userId === formattedUserId);
+      pickedNumbers.push(num);
+
+      // Rotate turn to next player in room roster
+      const playerIndex = room.players.findIndex(p => p.userId === formattedUserId);
+      const nextIndex = (playerIndex + 1) % room.players.length;
+      const nextPlayer = room.players[nextIndex];
+
+      room.gameData = {
+        currentTurnUserId: nextPlayer.userId,
+        currentTurnName: nextPlayer.name,
+        pickedNumbers,
+        lastPickedNumber: num,
+        lastPickedBy: activePlayer ? activePlayer.name : 'Player'
+      };
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('number_picked', {
+        roomId: formattedRoomId,
+        number: num,
+        pickedBy: activePlayer ? activePlayer.name : 'Player',
+        pickedByUserId: formattedUserId,
+        pickedNumbers,
+        nextTurnUserId: nextPlayer.userId,
+        nextTurnName: nextPlayer.name
+      });
+    } catch (err) {
+      console.error('Socket pick_number error:', err);
+      sendError('pick_number', err.message || 'Failed to pick number');
+    }
+  });
+
+  /**
+   * Event: claim_bingo
+   * Payload: { roomId, userId }
+   */
+  socket.on('claim_bingo', async (payload = {}) => {
+    try {
+      const { roomId, userId } = payload;
+      if (!roomId || !userId) return;
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return;
+
+      const winner = room.players.find(p => p.userId === formattedUserId);
+      const winnerName = winner ? winner.name : 'Player';
+
+      room.status = 'finished';
+      await room.save();
+
+      io.to(formattedRoomId).emit('bingo_claimed', {
+        roomId: formattedRoomId,
+        winnerUserId: formattedUserId,
+        winnerName: winnerName,
+        message: `🎉 ${winnerName} claimed BINGO and won the game!`
+      });
+    } catch (err) {
+      console.error('Socket claim_bingo error:', err);
     }
   });
 
