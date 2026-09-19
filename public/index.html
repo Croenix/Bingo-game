@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Bingo Arena - Real-Time Multiplayer Bingo Game</title>
+  <meta name="description" content="Play real-time multiplayer Bingo with friends on any mobile or desktop device." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- CSS Styles -->
+  <link rel="stylesheet" href="/index.css" />
+
+  <!-- Canvas Confetti Library -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="logo-icon">🎰</div>
+        <span class="logo-text">BINGO<span class="logo-highlight">ARENA</span></span>
+      </div>
+
+      <div class="nav-user" id="navUserBadge" style="display: none;">
+        <div class="currency-pills">
+          <div class="currency-pill coins-pill">
+            <span class="currency-icon">🪙</span>
+            <span id="navUserCoins">1,000</span>
+          </div>
+          <div class="currency-pill gems-pill">
+            <span class="currency-icon">💎</span>
+            <span id="navUserGems">0</span>
+          </div>
+        </div>
+
+        <div class="profile-card" onclick="openProfileModal()">
+          <img id="navUserAvatar" src="" alt="Avatar" class="user-avatar" />
+          <div class="user-info">
+            <span id="navUserName" class="user-name">Player</span>
+            <span id="navUserId" class="user-id">BGO-0000</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-container">
+
+      <!-- ================= LOBBY VIEW ================= -->
+      <section id="lobbyView" class="view active-view">
+        <!-- Hero Welcome Banner -->
+        <div class="hero-banner">
+          <div class="hero-content">
+            <h1 class="hero-title">Ready for Bingo? 🔥</h1>
+            <p class="hero-subtitle">Join rooms, challenge online players, and win massive coin prizes!</p>
+            <div class="hero-actions">
+              <button class="btn btn-primary btn-lg glow-effect" onclick="openCreateRoomModal()">
+                <span class="btn-icon">➕</span> Create Room
+              </button>
+              <button class="btn btn-secondary btn-lg" onclick="openJoinRoomModal()">
+                <span class="btn-icon">🔑</span> Join with Code
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Challenges Section -->
+        <div class="section-header">
+          <h2>🏆 Featured Challenges</h2>
+          <span class="badge badge-purple">Live</span>
+        </div>
+        <div class="challenges-grid" id="challengesContainer">
+          <div class="loading-spinner-container">
+            <div class="spinner"></div>
+            <p>Loading game challenges...</p>
+          </div>
+        </div>
+
+        <!-- Active Rooms Section -->
+        <div class="section-header mt-8">
+          <div class="header-title-group">
+            <h2>🎮 Active Public Rooms</h2>
+            <span id="roomsCountBadge" class="count-badge">0</span>
+          </div>
+          <button class="btn btn-icon-only btn-ghost" onclick="fetchRooms()" title="Refresh Rooms">
+            🔄
+          </button>
+        </div>
+
+        <div class="rooms-grid" id="roomsContainer">
+          <div class="empty-state">
+            <span class="empty-icon">🎲</span>
+            <p>No active public rooms right now.</p>
+            <button class="btn btn-primary btn-sm mt-3" onclick="openCreateRoomModal()">Create First Room</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= GAME ROOM VIEW ================= -->
+      <section id="gameView" class="view">
+        <!-- Room Header Bar -->
+        <div class="game-header">
+          <div class="room-title-block">
+            <button class="btn btn-icon-only btn-ghost" onclick="confirmLeaveRoom()" title="Leave Room">
+              ⬅️
+            </button>
+            <div>
+              <h2 id="gameRoomName">Bingo Room</h2>
+              <div class="room-code-tag">
+                <span>Code: <strong id="gameRoomCode">------</strong></span>
+                <button class="copy-btn" onclick="copyRoomCode()" title="Copy Code">📋</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="game-actions">
+            <button class="btn btn-danger btn-sm" onclick="confirmLeaveRoom()">Leave</button>
+          </div>
+        </div>
+
+        <!-- Players Roster Horizontal Strip -->
+        <div class="players-strip" id="playersStrip">
+          <!-- Dynamically populated players badges -->
+        </div>
+
+        <!-- B-I-N-G-O Progress Header -->
+        <div class="bingo-header-card">
+          <div class="bingo-letters">
+            <div class="bingo-letter" id="letter-B">B</div>
+            <div class="bingo-letter" id="letter-I">I</div>
+            <div class="bingo-letter" id="letter-N">N</div>
+            <div class="bingo-letter" id="letter-G">G</div>
+            <div class="bingo-letter" id="letter-O">O</div>
+          </div>
+          <div class="bingo-lines-count">
+            Lines Cleared: <strong id="linesClearedCount">0</strong>/5
+          </div>
+        </div>
+
+        <!-- Game Ticket Board -->
+        <div class="board-container">
+          <div class="bingo-grid" id="bingoGrid">
+            <!-- 25 Interactive Bingo Tiles generated dynamically -->
+          </div>
+        </div>
+
+        <!-- Bottom Game Controls Bar -->
+        <div class="game-footer">
+          <div class="status-indicator">
+            <span class="pulse-dot"></span>
+            <span id="gameStatusText">Click numbers on your ticket to mark them!</span>
+          </div>
+
+          <button id="claimBingoBtn" class="btn btn-gold btn-xl bingo-claim-btn" onclick="claimBingo()" disabled>
+            ✨ CLAIM BINGO! ✨
+          </button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- Auth / Login Modal -->
+    <div class="modal-overlay" id="authModal">
+      <div class="modal-card auth-card">
+        <div class="auth-header">
+          <div class="auth-icon">🎮</div>
+          <h2>Welcome to Bingo Arena!</h2>
+          <p>Sign in or create an account to start playing.</p>
+        </div>
+
+        <form id="authForm" onsubmit="handleAuthSubmit(event)">
+          <div class="form-group">
+            <label for="authGmail">Gmail Address *</label>
+            <input type="email" id="authGmail" class="form-control" placeholder="your.email@gmail.com" required />
+          </div>
+
+          <div class="form-group">
+            <label for="authName">Player Name (Optional)</label>
+            <input type="text" id="authName" class="form-control" placeholder="Leave blank for random gaming name" />
+          </div>
+
+          <div class="form-group">
+            <label for="authPassword">Password (Optional)</label>
+            <input type="password" id="authPassword" class="form-control" placeholder="Enter password (optional)" />
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block btn-lg glow-effect mt-4" id="authSubmitBtn">
+            🚀 Play Now
+          </button>
+        </form>
+
+        <div class="auth-divider">
+          <span>OR</span>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-block" onclick="handleGuestLogin()">
+          ⚡ Quick Guest Play
+        </button>
+      </div>
+    </div>
+
+    <!-- Create Room Modal -->
+    <div class="modal-overlay" id="createRoomModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>➕ Create New Game Room</h3>
+          <button class="close-btn" onclick="closeModal('createRoomModal')">✕</button>
+        </div>
+
+        <form id="createRoomForm" onsubmit="handleCreateRoomSubmit(event)">
+          <div class="form-group">
+            <label for="createRoomName">Room Name *</label>
+            <input type="text" id="createRoomName" class="form-control" placeholder="e.g. Winner's Lounge" required />
+          </div>
+
+          <div class="form-group">
+            <label for="createCapacity">Max Players (2 - 10)</label>
+            <div class="range-group">
+              <input type="range" id="createCapacity" min="2" max="10" value="4" oninput="document.getElementById('capacityVal').textContent = this.value" />
+              <span id="capacityVal" class="range-val">4</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="createPassword">Room Password (Optional)</label>
+            <input type="password" id="createPassword" class="form-control" placeholder="Leave blank for public room" />
+          </div>
+
+          <div class="form-group">
+            <label for="createCustomId">Custom Room ID (Optional)</label>
+            <input type="text" id="createCustomId" class="form-control" placeholder="e.g. VIP888 (6 chars)" maxlength="10" />
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('createRoomModal')">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create & Join</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Join Room Modal -->
+    <div class="modal-overlay" id="joinRoomModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>🔑 Join Room with Code</h3>
+          <button class="close-btn" onclick="closeModal('joinRoomModal')">✕</button>
+        </div>
+
+        <form id="joinRoomForm" onsubmit="handleJoinRoomSubmit(event)">
+          <div class="form-group">
+            <label for="joinRoomCode">Room Code / ID *</label>
+            <input type="text" id="joinRoomCode" class="form-control uppercase-input" placeholder="e.g. 7F4K92" required />
+          </div>
+
+          <div class="form-group">
+            <label for="joinRoomPassword">Password (If required)</label>
+            <input type="password" id="joinRoomPassword" class="form-control" placeholder="Enter room password" />
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('joinRoomModal')">Cancel</button>
+            <button type="submit" class="btn btn-primary">Join Room</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- User Profile Modal -->
+    <div class="modal-overlay" id="profileModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>👤 Player Profile</h3>
+          <button class="close-btn" onclick="closeModal('profileModal')">✕</button>
+        </div>
+
+        <div class="profile-modal-body">
+          <img id="modalProfileAvatar" src="" alt="Avatar" class="large-avatar" />
+          <h3 id="modalProfileName">Player</h3>
+          <p id="modalProfileUserId" class="sub-text">BGO-0000</p>
+          <p id="modalProfileGmail" class="sub-text">email@gmail.com</p>
+
+          <div class="stats-row">
+            <div class="stat-card">
+              <span class="stat-val" id="modalProfileCoins">1,000</span>
+              <span class="stat-lbl">🪙 Coins</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-val" id="modalProfileGems">0</span>
+              <span class="stat-lbl">💎 Gems</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer align-center">
+          <button class="btn btn-danger btn-block" onclick="handleLogout()">Logout / Switch Account</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Victory / Game Over Modal -->
+    <div class="modal-overlay" id="victoryModal">
+      <div class="modal-card victory-card">
+        <div class="victory-icon">🎉</div>
+        <h2>BINGO VICTOR!</h2>
+        <p id="victoryMessage">Congratulations! You cleared 5 lines!</p>
+
+        <div class="reward-box">
+          <span class="reward-title">REWARD</span>
+          <span class="reward-amount">+500 🪙</span>
+        </div>
+
+        <button class="btn btn-gold btn-lg btn-block mt-4" onclick="closeVictoryAndLeave()">
+          Back to Lobby
+        </button>
+      </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer"></div>
+  </div>
+
+  <!-- Socket.io Library -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Game Logic Script -->
+  <script src="/index.js"></script>
+</body>
+</html>
