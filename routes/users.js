@@ -25,31 +25,45 @@ router.use(checkDbConnection);
  */
 router.post('/', async (req, res, next) => {
   try {
-    const gmailId = String(req.body.gmailId || '').trim().toLowerCase();
+    let gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
     const inputName = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
     const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : inputName;
     const profileImageUrl = req.body.profileImageUrl !== undefined ? String(req.body.profileImageUrl).trim() : undefined;
 
-    if (!/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
-      return res.status(400).json({ error: 'gmailId must be a valid Gmail address' });
-    }
     if (!deviceId) {
       return res.status(400).json({ error: 'deviceId is required' });
     }
 
-    // Check device binding: Ensure this deviceId is not already bound to another account (different gmailId)
-    const existingDeviceUser = await User.findOne({ deviceId });
-    if (existingDeviceUser && existingDeviceUser.gmailId !== gmailId) {
-      return res.status(409).json({ error: 'An account already exists for this device ID' });
+    // 1. Device-first lookup: Ensure each physical device gets its own unique account
+    let user = await User.findOne({ deviceId });
+
+    if (!user && gmailId) {
+      // 2. Check if gmailId is already bound to another device or is generic
+      const existingGmailUser = await User.findOne({ gmailId });
+      if (existingGmailUser) {
+        if (existingGmailUser.deviceId === deviceId) {
+          user = existingGmailUser;
+        } else {
+          // gmailId is bound to a different device or is generic (e.g. player@gmail.com)
+          // Generate a unique device-specific gmailId for this new device account
+          const cleanDevId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-12) || Date.now();
+          gmailId = `player_${cleanDevId}@gmail.com`;
+        }
+      }
     }
 
-    let user = await User.findOne({ gmailId });
+    if (!gmailId || !/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
+      const cleanDevId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-12) || Date.now();
+      gmailId = `player_${cleanDevId}@gmail.com`;
+    }
 
     if (user) {
       // Existing user update
-      if (inputName !== undefined && inputName.length > 0) {
+      if (inputName !== undefined && inputName.length > 0 && inputName.toLowerCase() !== 'player') {
         user.name = inputName;
+      } else if (!user.name || user.name.toLowerCase() === 'player') {
+        user.name = await generateUniqueUsername(User);
       }
       user.deviceId = deviceId;
 
@@ -65,8 +79,8 @@ router.post('/', async (req, res, next) => {
       }
 
       // Backfill or update username if requested/missing
-      if (!user.username) {
-        user.username = await generateUniqueUsername(User, requestedUsername);
+      if (!user.username || user.username.toLowerCase() === 'player') {
+        user.username = await generateUniqueUsername(User, user.name);
       } else if (req.body.username !== undefined && requestedUsername !== user.username) {
         const usernameTaken = await User.findOne({ username: requestedUsername, _id: { $ne: user._id } });
         if (usernameTaken) {
@@ -75,26 +89,33 @@ router.post('/', async (req, res, next) => {
         user.username = requestedUsername;
       }
 
-      // Ensure name is present
-      if (!user.name) {
-        user.name = user.username;
-      }
-
       await user.save();
     } else {
       // New user creation with collision retry loop
       let saved = false;
       let attempts = 0;
 
-      // Determine initial name / username
-      const initialName = inputName || requestedUsername || '';
+      const rawName = (inputName || req.body.username || '').trim();
+      const isGenericOrMissing = !rawName || rawName.toLowerCase() === 'player';
 
       while (!saved && attempts < 5) {
         attempts++;
         try {
           const newUserId = await generateUniqueUserId(User);
-          const newUsername = await generateUniqueUsername(User, requestedUsername || initialName);
-          const finalName = initialName || newUsername;
+
+          let finalName;
+          let candidateUsername;
+
+          if (isGenericOrMissing) {
+            const randomPlayerName = await generateUniqueUsername(User);
+            finalName = randomPlayerName;
+            candidateUsername = randomPlayerName;
+          } else {
+            finalName = rawName;
+            candidateUsername = rawName;
+          }
+
+          const newUsername = await generateUniqueUsername(User, candidateUsername);
           const defaultAvatar = profileImageUrl || generateDefaultAvatar(newUserId);
           const initialCoins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
 
@@ -112,6 +133,11 @@ router.post('/', async (req, res, next) => {
           saved = true;
         } catch (saveErr) {
           if (saveErr.code === 11000 && saveErr.keyPattern) {
+            if (saveErr.keyPattern.gmailId) {
+              const cleanDevId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-8);
+              gmailId = `player_${cleanDevId}_${Date.now()}@gmail.com`;
+              continue;
+            }
             if (saveErr.keyPattern.userId || saveErr.keyPattern.username) {
               continue; // Retry with a newly generated username/userId
             }

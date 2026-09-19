@@ -30,10 +30,10 @@ async function migrateLegacyUsers() {
       if (!user.userId) {
         user.userId = await generateUniqueUserId(User);
       }
-      if (!user.username) {
+      if (!user.username || user.username.toLowerCase() === 'player') {
         user.username = await generateUniqueUsername(User);
       }
-      if (!user.name) {
+      if (!user.name || user.name.toLowerCase() === 'player') {
         user.name = user.username;
       }
       if (!user.profileImageUrl) {
