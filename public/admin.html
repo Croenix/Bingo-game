@@ -53,10 +53,15 @@
     <!-- Main Admin Dashboard UI -->
     <div id="mainContent" class="admin-wrapper hidden">
       <!-- Sidebar Navigation -->
-      <aside class="sidebar glass-sidebar">
+      <aside class="sidebar glass-sidebar" id="sidebar">
         <div class="sidebar-brand">
-          <i class="fa-solid fa-gamepad logo-icon"></i>
-          <span class="brand-text">BINGO <span>SERVER</span></span>
+          <div class="brand-logo-group">
+            <i class="fa-solid fa-gamepad logo-icon"></i>
+            <span class="brand-text">BINGO <span>SERVER</span></span>
+          </div>
+          <button id="sidebarCloseBtn" class="sidebar-close-btn" title="Close Sidebar">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
         
         <div class="server-badge" id="serverBadge">
@@ -105,13 +110,21 @@
         </div>
       </aside>
 
+      <!-- Sidebar Overlay Backdrop for Mobile Drawer -->
+      <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
       <!-- Main Workspace -->
       <main class="content-area">
         <!-- Top Bar -->
         <header class="topbar glass-header">
-          <div class="page-title-box">
-            <h1 id="pageTitle">Dashboard Overview</h1>
-            <p id="pageSubTitle">Real-time system telemetry and summary</p>
+          <div class="topbar-left-group">
+            <button id="mobileToggleBtn" class="mobile-toggle-btn" title="Open Navigation Menu">
+              <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="page-title-box">
+              <h1 id="pageTitle">Dashboard Overview</h1>
+              <p id="pageSubTitle">Real-time system telemetry and summary</p>
+            </div>
           </div>
 
           <div class="topbar-actions">
@@ -120,10 +133,10 @@
               <div class="server-uptime-tag" id="headerUptimeTag"><i class="fa-solid fa-bolt"></i> Uptime: --</div>
             </div>
             <button id="globalClearCacheBtn" class="btn btn-outline-danger" title="Clear Cache Memory across All User Devices">
-              <i class="fa-solid fa-broom text-rose"></i> Clear All Users Cache
+              <i class="fa-solid fa-broom text-rose"></i> <span class="btn-text">Clear All Users Cache</span>
             </button>
             <button id="globalRefreshBtn" class="btn btn-outline" title="Refresh All Data">
-              <i class="fa-solid fa-rotate-right"></i> Refresh Data
+              <i class="fa-solid fa-rotate-right"></i> <span class="btn-text">Refresh Data</span>
             </button>
           </div>
         </header>

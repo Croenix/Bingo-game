@@ -47,6 +47,10 @@
     loginErrorText: document.getElementById('loginErrorText'),
     
     mainContent: document.getElementById('mainContent'),
+    sidebar: document.getElementById('sidebar'),
+    sidebarCloseBtn: document.getElementById('sidebarCloseBtn'),
+    sidebarOverlay: document.getElementById('sidebarOverlay'),
+    mobileToggleBtn: document.getElementById('mobileToggleBtn'),
     adminEmailDisplay: document.getElementById('adminEmailDisplay'),
     adminAvatar: document.getElementById('adminAvatar'),
     logoutBtn: document.getElementById('logoutBtn'),
@@ -353,8 +357,22 @@
     showToast('Logged out successfully.', 'info');
   }
 
+  // Mobile Drawer Control
+  function openMobileSidebar() {
+    if (el.sidebar) el.sidebar.classList.add('open');
+    if (el.sidebarOverlay) el.sidebarOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMobileSidebar() {
+    if (el.sidebar) el.sidebar.classList.remove('open');
+    if (el.sidebarOverlay) el.sidebarOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+
   // Tab Switcher
   function switchTab(tabId) {
+    closeMobileSidebar();
     state.activeTab = tabId;
     el.navItems.forEach(item => {
       item.classList.toggle('active', item.dataset.tab === tabId);
@@ -1234,6 +1252,16 @@
       const type = el.adminPassword.type === 'password' ? 'text' : 'password';
       el.adminPassword.type = type;
       el.togglePasswordBtn.innerHTML = type === 'password' ? '<i class="fa-solid fa-eye"></i>' : '<i class="fa-solid fa-eye-slash"></i>';
+    });
+
+    // Mobile Navigation Drawer Events
+    if (el.mobileToggleBtn) el.mobileToggleBtn.addEventListener('click', openMobileSidebar);
+    if (el.sidebarCloseBtn) el.sidebarCloseBtn.addEventListener('click', closeMobileSidebar);
+    if (el.sidebarOverlay) el.sidebarOverlay.addEventListener('click', closeMobileSidebar);
+    window.addEventListener('resize', () => {
+      if (window.innerWidth >= 992) {
+        closeMobileSidebar();
+      }
     });
 
     el.navItems.forEach(btn => {
