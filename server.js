@@ -13,6 +13,7 @@ const adminRoutes = require('./routes/admin');
 const challengeRoutes = require('./routes/challenges');
 const roomRoutes = require('./routes/rooms');
 const vivoxRoutes = require('./routes/vivox');
+const agoraRoutes = require('./routes/agora');
 const registerRoomHandlers = require('./sockets/roomHandler');
 const migrateLegacyUsers = require('./utils/migrateUsers');
 
@@ -59,66 +60,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-app.get('/api/turn-config', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  let rawHost = String(process.env.COTURN_HOST || process.env.COTURN_PUBLIC_IP || '').trim();
-  rawHost = rawHost.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].trim();
-
-  // Validate that host is not empty, does not contain placeholders like <YOUR_...>, spaces, or invalid chars
-  const isValidHost = Boolean(
-    rawHost &&
-    !rawHost.includes('<') &&
-    !rawHost.includes('>') &&
-    !rawHost.includes(' ') &&
-    !rawHost.toLowerCase().includes('your_')
-  );
-
-  const coturnPort = Number(process.env.COTURN_PORT || 3478);
-  const coturnUser = String(process.env.COTURN_USERNAME || 'gameuser').trim();
-  const coturnPass = String(process.env.COTURN_PASSWORD || 'gamepassword123').trim();
-
-  const iceServers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' }
-  ];
-
-  if (isValidHost) {
-    iceServers.push({
-      urls: [
-        `turn:${rawHost}:${coturnPort}?transport=udp`,
-        `turn:${rawHost}:${coturnPort}?transport=tcp`
-      ],
-      username: coturnUser,
-      credential: coturnPass,
-      credentialType: 'password'
-    });
-  } else {
-    iceServers.push({
-      urls: [
-        'turn:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject',
-      credentialType: 'password'
-    });
-  }
-
-  res.json({
-    ok: true,
-    iceServers
-  });
-});
-
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/challenges', challengeRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/vivox', vivoxRoutes);
+app.use('/api/agora', agoraRoutes);
 
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));

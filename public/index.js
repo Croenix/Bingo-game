@@ -1084,7 +1084,7 @@ function renderPlayersStrip() {
     const isMe = currentUser && currentUser.userId === p.userId;
     const voiceState = VoiceChat.voiceStates[p.userId] || {};
     const isMuted = isMe
-      ? (VoiceChat.isMicMuted || !VoiceChat.localStream)
+      ? (VoiceChat.isMicMuted || !VoiceChat.localAudioTrack)
       : (voiceState.isMicMuted !== false);
 
     return `
@@ -1165,393 +1165,106 @@ function escapeHtml(str) {
 // WebRTC In-Room Real-Time Voice Chat System
 // ==========================================================================
 // ==========================================================================
-// WebRTC In-Room Real-Time Voice Chat System (Perfect Negotiation Mesh)
+// Agora RTC Web SDK In-Room Voice Chat System
 // ==========================================================================
 const VoiceChat = {
-  localStream: null,
-  peers: {}, // socketId -> RTCPeerConnection
-  remoteAudioElements: {}, // socketId -> <audio>
-  iceCandidateQueues: {}, // socketId -> [RTCIceCandidateInit]
-  makingOffer: {}, // socketId -> boolean
+  client: null,
+  localAudioTrack: null,
+  remoteUsers: {}, // uid -> user
   isMicMuted: false,
   isSpeakerMuted: false,
   voiceStates: {}, // userId / socketId -> { isMicMuted, isSpeakerMuted }
-  iceServersConfig: null,
-
-  sanitizeIceServers(servers) {
-    if (!Array.isArray(servers)) return [];
-    const validServers = [];
-    servers.forEach(s => {
-      if (!s || !s.urls) return;
-      const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
-      const cleanUrls = urls.filter(u => {
-        if (typeof u !== 'string') return false;
-        const str = u.trim();
-        if (str.includes('<') || str.includes('>') || str.includes(' ') || str.toLowerCase().includes('your_')) return false;
-        return true;
-      });
-      if (cleanUrls.length > 0) {
-        const serverObj = { urls: cleanUrls.length === 1 ? cleanUrls[0] : cleanUrls };
-        if (s.username) serverObj.username = String(s.username).trim();
-        if (s.credential) serverObj.credential = String(s.credential).trim();
-        if (s.credentialType) serverObj.credentialType = s.credentialType;
-        validServers.push(serverObj);
-      }
-    });
-    return validServers;
-  },
-
-  async fetchIceServers() {
-    try {
-      const res = await fetch('/api/turn-config');
-      const data = await res.json();
-      if (data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
-        const clean = this.sanitizeIceServers(data.iceServers);
-        if (clean.length > 0) {
-          this.iceServersConfig = clean;
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('[VoiceChat] Failed to fetch /api/turn-config, using fallback:', e);
-    }
-    this.iceServersConfig = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      {
-        urls: [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp'
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-        credentialType: 'password'
-      }
-    ];
-  },
 
   async initInRoom(roomId) {
     if (!roomId) return;
-    this.close();
+    await this.close();
 
-    if (!socket) return;
-    await this.fetchIceServers();
+    if (typeof AgoraRTC === 'undefined') {
+      console.warn('AgoraRTC SDK is not available');
+      return;
+    }
 
-    socket.off('voice_signal');
-    socket.off('voice_state_updated');
-    socket.off('player_left');
+    // 1. Initialize Agora RTC Client with mode "rtc" and codec "vp8"
+    this.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
 
-    socket.on('voice_signal', async (data) => {
-      const { roomId: signalRoomId, senderSocketId, senderUserId, signalData, type } = data;
-      if (!senderSocketId || senderSocketId === socket.id) return;
-      if (signalRoomId && currentRoom && String(signalRoomId).toUpperCase().trim() !== String(currentRoom.roomId).toUpperCase().trim()) {
-        return; // Ignore signals from other rooms
-      }
-
-      if (type === 'join') {
-        this.connectToPeer(senderSocketId);
-      } else if (type === 'offer') {
-        await this.handleOffer(senderSocketId, signalData);
-      } else if (type === 'answer') {
-        await this.handleAnswer(senderSocketId, signalData);
-      } else if (type === 'candidate') {
-        await this.handleCandidate(senderSocketId, signalData);
-      } else if (type === 'leave') {
-        this.removePeer(senderSocketId);
-        if (senderUserId) {
-          delete this.voiceStates[senderUserId];
+    // 2. Subscribe to remote users' published audio tracks and play automatically
+    this.client.on('user-published', async (user, mediaType) => {
+      try {
+        await this.client.subscribe(user, mediaType);
+        if (mediaType === 'audio') {
+          this.remoteUsers[user.uid] = user;
+          if (!this.isSpeakerMuted && user.audioTrack) {
+            user.audioTrack.play();
+          }
         }
+      } catch (err) {
+        console.error('Agora subscribe user-published error:', err);
+      }
+    });
+
+    this.client.on('user-unpublished', (user, mediaType) => {
+      if (mediaType === 'audio') {
+        delete this.remoteUsers[user.uid];
+      }
+    });
+
+    this.client.on('user-left', (user) => {
+      delete this.remoteUsers[user.uid];
+      delete this.voiceStates[user.uid];
+      renderPlayersStrip();
+    });
+
+    if (socket) {
+      socket.off('voice_state_updated');
+      socket.on('voice_state_updated', (data) => {
+        const { roomId: signalRoomId, userId, socketId, isMicMuted, isSpeakerMuted } = data;
+        if (signalRoomId && currentRoom && String(signalRoomId).toUpperCase().trim() !== String(currentRoom.roomId).toUpperCase().trim()) {
+          return;
+        }
+        this.voiceStates[userId || socketId] = { isMicMuted, isSpeakerMuted };
         renderPlayersStrip();
-      }
-    });
+      });
+    }
 
-    socket.on('voice_state_updated', (data) => {
-      const { roomId: signalRoomId, userId, socketId, isMicMuted, isSpeakerMuted } = data;
-      if (signalRoomId && currentRoom && String(signalRoomId).toUpperCase().trim() !== String(currentRoom.roomId).toUpperCase().trim()) {
-        return; // Ignore voice state from other rooms
-      }
-      this.voiceStates[userId || socketId] = { isMicMuted, isSpeakerMuted };
-      renderPlayersStrip();
-    });
+    // 3. Fetch Agora App ID from server or global fallback
+    let appId = window.AGORA_APP_ID || 'a1b2c3d4e5f67890a1b2c3d4e5f67890';
+    try {
+      const res = await fetch('/api/agora/config');
+      const data = await res.json();
+      if (data && data.appId) appId = data.appId;
+    } catch (e) {}
 
-    socket.on('player_left', (data) => {
-      if (data && data.socketId) {
-        this.removePeer(data.socketId);
-      }
-      if (data && data.userId) {
-        delete this.voiceStates[data.userId];
-      }
-      renderPlayersStrip();
-    });
+    const formattedRoomId = String(roomId).toUpperCase().trim();
+    const uid = (currentUser && currentUser.userId) ? String(currentUser.userId) : String(socket ? socket.id : Date.now());
 
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        },
-        video: false
+      // 4. Join the voice channel named after roomId
+      await this.client.join(appId, formattedRoomId, null, uid);
+
+      // 5. Create & publish local microphone audio track
+      this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+        AEC: true,
+        ANS: true,
+        AGC: true
       });
+
+      await this.client.publish([this.localAudioTrack]);
       this.isMicMuted = false;
       this.updateControlsUI();
-
-      socket.emit('voice_signal', {
-        roomId: currentRoom.roomId,
-        senderUserId: currentUser ? currentUser.userId : null,
-        type: 'join'
-      });
-
       this.broadcastState();
-      showToast('🎙️ Live Voice Chat Connected!', 'success');
+
+      showToast('🎙️ Live Voice Chat Connected (Agora)!', 'success');
     } catch (err) {
-      console.warn('VoiceChat mic capture error or permission denied:', err);
+      console.warn('Agora mic capture error or permission denied:', err);
       this.isMicMuted = true;
       showToast('🎙️ Voice Chat: Mic muted or permission needed. Click Mic ON to activate!', 'info');
       this.updateControlsUI();
       this.broadcastState();
     }
-
-    if (currentRoom && Array.isArray(currentRoom.players)) {
-      currentRoom.players.forEach(p => {
-        if (p.socketId && p.socketId !== socket.id) {
-          this.connectToPeer(p.socketId);
-        }
-      });
-    }
-  },
-
-  connectToPeer(targetSocketId) {
-    if (!targetSocketId || targetSocketId === socket.id) return;
-    const pc = this.getOrCreatePeerConnection(targetSocketId);
-    this.makeOffer(targetSocketId, pc);
-  },
-
-  getOrCreatePeerConnection(targetSocketId) {
-    if (this.peers[targetSocketId]) {
-      const existingPc = this.peers[targetSocketId];
-      if (existingPc.connectionState !== 'closed' && existingPc.connectionState !== 'failed') {
-        return existingPc;
-      }
-      this.removePeer(targetSocketId);
-    }
-
-    const defaultServers = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      {
-        urls: [
-          'turn:openrelay.metered.ca:80',
-          'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp'
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-        credentialType: 'password'
-      }
-    ];
-
-    const rawServers = (this.iceServersConfig && this.iceServersConfig.length > 0) ? this.iceServersConfig : defaultServers;
-    const sanitizedServers = this.sanitizeIceServers(rawServers);
-
-    const configuration = {
-      iceServers: sanitizedServers.length > 0 ? sanitizedServers : this.sanitizeIceServers(defaultServers),
-      iceCandidatePoolSize: 10,
-      iceTransportPolicy: 'all'
-    };
-
-    let pc;
-    try {
-      pc = new RTCPeerConnection(configuration);
-    } catch (err) {
-      console.warn('[VoiceChat] Failed to construct RTCPeerConnection with custom configuration, using STUN fallback:', err);
-      const fallbackConfig = {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      };
-      pc = new RTCPeerConnection(fallbackConfig);
-    }
-    this.peers[targetSocketId] = pc;
-
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => {
-        pc.addTrack(track, this.localStream);
-      });
-    }
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('voice_signal', {
-          roomId: currentRoom ? currentRoom.roomId : '',
-          targetSocketId: targetSocketId,
-          senderUserId: currentUser ? currentUser.userId : null,
-          signalData: event.candidate,
-          type: 'candidate'
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      let audio = this.remoteAudioElements[targetSocketId];
-      if (!audio) {
-        audio = document.createElement('audio');
-        audio.autoplay = true;
-        audio.setAttribute('playsinline', 'true');
-        audio.style.position = 'fixed';
-        audio.style.left = '-9999px';
-        audio.style.top = '-9999px';
-        audio.style.width = '1px';
-        audio.style.height = '1px';
-        audio.style.opacity = '0.01';
-        document.body.appendChild(audio);
-        this.remoteAudioElements[targetSocketId] = audio;
-      }
-      if (event.streams && event.streams[0]) {
-        audio.srcObject = event.streams[0];
-      } else {
-        audio.srcObject = new MediaStream([event.track]);
-      }
-      audio.muted = this.isSpeakerMuted;
-      audio.play().catch(err => {
-        console.warn('Audio play auto-block:', err);
-      });
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'closed' || pc.iceConnectionState === 'failed') {
-        this.removePeer(targetSocketId);
-      }
-    };
-
-    return pc;
-  },
-
-  async makeOffer(targetSocketId, pc) {
-    try {
-      this.makingOffer[targetSocketId] = true;
-      const offer = await pc.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: false
-      });
-      if (pc.signalingState !== 'stable') return;
-      await pc.setLocalDescription(offer);
-      socket.emit('voice_signal', {
-        roomId: currentRoom ? currentRoom.roomId : '',
-        targetSocketId: targetSocketId,
-        senderUserId: currentUser ? currentUser.userId : null,
-        signalData: pc.localDescription,
-        type: 'offer'
-      });
-    } catch (err) {
-      console.error('VoiceChat makeOffer error:', err);
-    } finally {
-      this.makingOffer[targetSocketId] = false;
-    }
-  },
-
-  async handleOffer(senderSocketId, offerData) {
-    const pc = this.getOrCreatePeerConnection(senderSocketId);
-    const isPolite = socket.id < senderSocketId;
-    const offerCollision = this.makingOffer[senderSocketId] || pc.signalingState !== 'stable';
-
-    if (offerCollision) {
-      if (!isPolite) {
-        return;
-      }
-      try {
-        await pc.setLocalDescription({ type: 'rollback' });
-      } catch (e) {}
-    }
-
-    try {
-      await pc.setRemoteDescription(new RTCSessionDescription(offerData));
-      await this.flushIceCandidates(senderSocketId, pc);
-
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      socket.emit('voice_signal', {
-        roomId: currentRoom ? currentRoom.roomId : '',
-        targetSocketId: senderSocketId,
-        senderUserId: currentUser ? currentUser.userId : null,
-        signalData: pc.localDescription,
-        type: 'answer'
-      });
-    } catch (err) {
-      console.error('VoiceChat handle offer error:', err);
-    }
-  },
-
-  async handleAnswer(senderSocketId, answerData) {
-    const pc = this.peers[senderSocketId];
-    if (pc && pc.signalingState === 'have-local-offer') {
-      try {
-        await pc.setRemoteDescription(new RTCSessionDescription(answerData));
-        await this.flushIceCandidates(senderSocketId, pc);
-      } catch (err) {
-        console.error('VoiceChat handle answer error:', err);
-      }
-    }
-  },
-
-  async handleCandidate(senderSocketId, candidateData) {
-    const pc = this.peers[senderSocketId];
-    if (pc && pc.remoteDescription) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidateData));
-      } catch (err) {
-        console.error('VoiceChat add ICE candidate error:', err);
-      }
-    } else {
-      if (!this.iceCandidateQueues[senderSocketId]) {
-        this.iceCandidateQueues[senderSocketId] = [];
-      }
-      this.iceCandidateQueues[senderSocketId].push(candidateData);
-    }
-  },
-
-  async flushIceCandidates(socketId, pc) {
-    const queue = this.iceCandidateQueues[socketId];
-    if (queue && queue.length > 0) {
-      while (queue.length > 0) {
-        const cand = queue.shift();
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(cand));
-        } catch (err) {
-          console.warn('Error flushing queued ICE candidate:', err);
-        }
-      }
-    }
-  },
-
-  removePeer(socketId) {
-    if (this.peers[socketId]) {
-      try { this.peers[socketId].close(); } catch (e) {}
-      delete this.peers[socketId];
-    }
-    if (this.remoteAudioElements[socketId]) {
-      try { this.remoteAudioElements[socketId].remove(); } catch (e) {}
-      delete this.remoteAudioElements[socketId];
-    }
-    if (this.iceCandidateQueues[socketId]) {
-      delete this.iceCandidateQueues[socketId];
-    }
-    if (this.makingOffer[socketId]) {
-      delete this.makingOffer[socketId];
-    }
   },
 
   async toggleMic() {
-    if (!this.localStream) {
+    if (!this.localAudioTrack) {
       if (currentRoom) {
         await this.initInRoom(currentRoom.roomId);
       }
@@ -1559,9 +1272,11 @@ const VoiceChat = {
     }
 
     this.isMicMuted = !this.isMicMuted;
-    this.localStream.getAudioTracks().forEach(track => {
-      track.enabled = !this.isMicMuted;
-    });
+    try {
+      await this.localAudioTrack.setMuted(this.isMicMuted);
+    } catch (e) {
+      console.warn('Error setting local track mute state:', e);
+    }
 
     this.updateControlsUI();
     this.broadcastState();
@@ -1573,11 +1288,12 @@ const VoiceChat = {
   toggleSpeaker() {
     this.isSpeakerMuted = !this.isSpeakerMuted;
 
-    Object.values(this.remoteAudioElements).forEach(audio => {
-      if (audio) {
-        audio.muted = this.isSpeakerMuted;
-        if (!this.isSpeakerMuted) {
-          audio.play().catch(e => console.warn('Audio play error:', e));
+    Object.values(this.remoteUsers).forEach(user => {
+      if (user && user.audioTrack) {
+        if (this.isSpeakerMuted) {
+          user.audioTrack.stop();
+        } else {
+          user.audioTrack.play();
         }
       }
     });
@@ -1593,7 +1309,7 @@ const VoiceChat = {
       socket.emit('voice_state_change', {
         roomId: currentRoom.roomId,
         userId: currentUser.userId,
-        isMicMuted: this.isMicMuted || !this.localStream,
+        isMicMuted: this.isMicMuted || !this.localAudioTrack,
         isSpeakerMuted: this.isSpeakerMuted
       });
     }
@@ -1609,7 +1325,7 @@ const VoiceChat = {
     const speakerLabel = document.getElementById('speakerLabel');
 
     if (micBtn && micIcon && micLabel) {
-      if (this.isMicMuted || !this.localStream) {
+      if (this.isMicMuted || !this.localAudioTrack) {
         micBtn.classList.add('muted');
         micIcon.textContent = '🔇';
         micLabel.textContent = 'Mic OFF';
@@ -1633,37 +1349,36 @@ const VoiceChat = {
     }
   },
 
-  close() {
-    if (socket && currentRoom) {
+  async close() {
+    if (this.localAudioTrack) {
       try {
-        socket.emit('voice_signal', {
-          roomId: currentRoom.roomId,
-          senderUserId: currentUser ? currentUser.userId : null,
-          type: 'leave'
-        });
+        this.localAudioTrack.stop();
+        this.localAudioTrack.close();
       } catch (e) {}
+      this.localAudioTrack = null;
     }
 
-    if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
-      this.localStream = null;
+    if (this.client) {
+      try {
+        await this.client.leave();
+      } catch (e) {}
+      this.client = null;
     }
-    Object.keys(this.peers).forEach(id => this.removePeer(id));
-    this.peers = {};
-    this.remoteAudioElements = {};
-    this.iceCandidateQueues = {};
-    this.makingOffer = {};
+
+    this.remoteUsers = {};
     this.voiceStates = {};
   }
 };
 
 window.VoiceChat = VoiceChat;
 
-// Unlock mobile audio autoplay on first user interaction
+// Mobile audio unlocker for remote tracks
 document.addEventListener('click', () => {
-  Object.values(VoiceChat.remoteAudioElements).forEach(audio => {
-    if (audio && audio.paused) {
-      audio.play().catch(() => {});
-    }
-  });
+  if (VoiceChat.remoteUsers) {
+    Object.values(VoiceChat.remoteUsers).forEach(user => {
+      if (user && user.audioTrack && !VoiceChat.isSpeakerMuted) {
+        user.audioTrack.play();
+      }
+    });
+  }
 }, { passive: true });
