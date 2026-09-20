@@ -261,14 +261,14 @@ function registerRoomHandlers(io, socket) {
 
       // Auto-start game if capacity limit is reached
       if (updatedRoom.status === 'waiting' && updatedRoom.players.length >= updatedRoom.capacity) {
-        const firstPlayer = updatedRoom.players[Math.floor(Math.random() * updatedRoom.players.length)];
-        updatedRoom.status = 'playing';
         updatedRoom.gameData = {
           currentTurnUserId: firstPlayer.userId,
           currentTurnName: firstPlayer.name,
           pickedNumbers: [],
           lastPickedNumber: null,
-          lastPickedBy: null
+          lastPickedBy: null,
+          startedAt: Date.now(),
+          winners: []
         };
         await updatedRoom.save();
 
@@ -277,7 +277,8 @@ function registerRoomHandlers(io, socket) {
           status: 'playing',
           currentTurnUserId: firstPlayer.userId,
           currentTurnName: firstPlayer.name,
-          players: updatedRoom.players
+          players: updatedRoom.players,
+          startedAt: updatedRoom.gameData.startedAt
         });
       }
     } catch (err) {
@@ -315,7 +316,9 @@ function registerRoomHandlers(io, socket) {
         currentTurnName: firstPlayer.name,
         pickedNumbers: [],
         lastPickedNumber: null,
-        lastPickedBy: null
+        lastPickedBy: null,
+        startedAt: Date.now(),
+        winners: []
       };
 
       await room.save();
@@ -325,7 +328,8 @@ function registerRoomHandlers(io, socket) {
         status: 'playing',
         currentTurnUserId: firstPlayer.userId,
         currentTurnName: firstPlayer.name,
-        players: room.players
+        players: room.players,
+        startedAt: room.gameData.startedAt
       });
     } catch (err) {
       console.error('Socket start_game error:', err);
@@ -418,6 +422,37 @@ function registerRoomHandlers(io, socket) {
 
       const winner = room.players.find(p => p.userId === formattedUserId);
       const winnerName = winner ? winner.name : 'Player';
+      const winnerAvatar = winner ? winner.profileImageUrl : '';
+
+      const gameData = room.gameData || {};
+      const startedAt = gameData.startedAt || Date.now();
+      const winners = Array.isArray(gameData.winners) ? gameData.winners : [];
+
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      const mins = Math.floor(elapsedSec / 60);
+      const secs = elapsedSec % 60;
+      const timeDisplay = `${mins}m ${secs < 10 ? '0' : ''}${secs}s`;
+
+      let existingWin = winners.find(w => w.userId === formattedUserId);
+      let position;
+
+      if (!existingWin) {
+        position = winners.length + 1;
+        existingWin = {
+          position,
+          userId: formattedUserId,
+          name: winnerName,
+          profileImageUrl: winnerAvatar,
+          timeTakenSeconds: elapsedSec,
+          timeDisplay
+        };
+        winners.push(existingWin);
+        gameData.winners = winners;
+        room.gameData = gameData;
+        room.markModified('gameData');
+      } else {
+        position = existingWin.position;
+      }
 
       room.status = 'finished';
       await room.save();
@@ -426,7 +461,11 @@ function registerRoomHandlers(io, socket) {
         roomId: formattedRoomId,
         winnerUserId: formattedUserId,
         winnerName: winnerName,
-        message: `🎉 ${winnerName} claimed BINGO and won the game!`
+        position,
+        timeDisplay: existingWin.timeDisplay,
+        timeTakenSeconds: existingWin.timeTakenSeconds,
+        leaderboard: winners,
+        message: `🎉 ${winnerName} claimed Position #${position} BINGO in ${existingWin.timeDisplay}!`
       });
     } catch (err) {
       console.error('Socket claim_bingo error:', err);

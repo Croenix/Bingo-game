@@ -38,6 +38,8 @@
           </div>
         </div>
 
+        <button id="soundToggleBtn" class="btn btn-icon-only btn-ghost" title="Toggle Sound">🔊</button>
+
         <div class="profile-card" onclick="openProfileModal()">
           <img id="navUserAvatar" src="" alt="Avatar" class="user-avatar" />
           <div class="user-info">
@@ -318,16 +320,21 @@
       </div>
     </div>
 
-    <!-- Victory / Game Over Modal -->
+    <!-- Victory / Game Over Leaderboard Modal -->
     <div class="modal-overlay" id="victoryModal">
       <div class="modal-card victory-card">
-        <div class="victory-icon">🎉</div>
-        <h2>BINGO VICTOR!</h2>
-        <p id="victoryMessage">Congratulations! You cleared 5 lines!</p>
+        <div class="victory-header">
+          <div class="victory-icon">🏆</div>
+          <h2 id="victoryTitle">MATCH RESULTS</h2>
+          <p id="victoryMessage">Game Completed!</p>
+        </div>
 
-        <div class="reward-box">
-          <span class="reward-title">REWARD</span>
-          <span class="reward-amount">+500 🪙</span>
+        <!-- Position Ranking Leaderboard -->
+        <div class="victory-leaderboard-container">
+          <h4 class="leaderboard-heading">📊 Position Rankings</h4>
+          <div id="victoryLeaderboardList" class="leaderboard-list">
+            <!-- Dynamically rendered position rankings -->
+          </div>
         </div>
 
         <button class="btn btn-gold btn-lg btn-block mt-4" onclick="closeVictoryAndLeave()">

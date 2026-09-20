@@ -1023,3 +1023,106 @@ body {
   .bingo-grid { gap: 0.4rem; }
   .bingo-tile { font-size: 1.2rem; border-radius: var(--radius-sm); }
 }
+
+/* ==========================================================================
+   Victory & Match Leaderboard Styles
+   ========================================================================== */
+.victory-card {
+  text-align: center;
+}
+
+.victory-header {
+  margin-bottom: 0.8rem;
+}
+
+.victory-icon {
+  font-size: 3rem;
+  margin-bottom: 0.3rem;
+}
+
+.victory-leaderboard-container {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.8rem;
+  margin: 1rem 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.leaderboard-heading {
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-cyan);
+  margin-bottom: 0.6rem;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.leaderboard-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 0.8rem;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.leaderboard-item.is-me {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: var(--primary);
+  box-shadow: 0 0 12px var(--primary-glow);
+}
+
+.leaderboard-item.pos-1 .rank-badge {
+  color: var(--gold);
+  font-size: 1.2rem;
+}
+
+.rank-badge {
+  font-size: 1rem;
+  font-weight: 900;
+  min-width: 28px;
+  text-align: center;
+}
+
+.rank-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+}
+
+.rank-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.rank-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.rank-time {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.rank-reward {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--gold);
+}

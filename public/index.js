@@ -15,8 +15,218 @@ let roomStatus = 'waiting'; // 'waiting', 'playing', 'finished'
 let currentTurnUserId = null;
 let currentTurnName = '';
 
+// ==========================================================================
+// Web Audio API Synthesizer - Premium Sound Effects System
+// ==========================================================================
+const SoundFX = {
+  ctx: null,
+  enabled: true,
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  },
+
+  // 1. Tile / Block Click Sound (crisp tactile click/pop)
+  playTileClick() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.08);
+
+      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.08);
+    } catch (e) {
+      console.warn('SoundFX playTileClick error:', e);
+    }
+  },
+
+  // 2. Tile Marked Sound (satisfying C5-E5-G5 chime checkmark)
+  playTileMarked() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [523.25, 659.25, 783.99].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+
+        gain.gain.setValueAtTime(0.2, now + idx * 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.12);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.04);
+        osc.stop(now + idx * 0.04 + 0.12);
+      });
+    } catch (e) {
+      console.warn('SoundFX playTileMarked error:', e);
+    }
+  },
+
+  // 3. Turn Switch Sound (bright A5-D6-E6 notification bell when turn shifts to you)
+  playYourTurn() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [880, 1174.66, 1318.51].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+
+        gain.gain.setValueAtTime(0.25, now + idx * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.2);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.07);
+        osc.stop(now + idx * 0.07 + 0.2);
+      });
+    } catch (e) {
+      console.warn('SoundFX playYourTurn error:', e);
+    }
+  },
+
+  // 4. Player Joined Sound (welcoming double chime C5 to E5)
+  playPlayerJoined() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [523.25, 659.25].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+
+        gain.gain.setValueAtTime(0.2, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.25);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.25);
+      });
+    } catch (e) {
+      console.warn('SoundFX playPlayerJoined error:', e);
+    }
+  },
+
+  // 5. Player Left / Disconnected Sound (soft descending chime A4 to F4)
+  playPlayerLeft() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      [440, 349.23].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+
+        gain.gain.setValueAtTime(0.2, now + idx * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.25);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.1);
+        osc.stop(now + idx * 0.1 + 0.25);
+      });
+    } catch (e) {
+      console.warn('SoundFX playPlayerLeft error:', e);
+    }
+  },
+
+  // 6. Victory Fanfare Sound (triumphant C5-E5-G5-C6-E6-G6 arpeggio fanfare)
+  playVictory() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+      notes.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+
+        gain.gain.setValueAtTime(0.3, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.4);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.4);
+      });
+    } catch (e) {
+      console.warn('SoundFX playVictory error:', e);
+    }
+  }
+};
+
+function toggleSound() {
+  SoundFX.enabled = !SoundFX.enabled;
+  const btn = document.getElementById('soundToggleBtn');
+  if (btn) {
+    btn.textContent = SoundFX.enabled ? '🔊' : '🔇';
+    btn.title = SoundFX.enabled ? 'Sound On' : 'Sound Muted';
+  }
+  showToast(SoundFX.enabled ? 'Sound Effects Enabled 🔊' : 'Sound Effects Muted 🔇', 'info');
+}
+window.toggleSound = toggleSound;
+window.SoundFX = SoundFX;
+
 // On DOM Ready
 document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('click', () => SoundFX.init(), { once: true });
+  const soundBtn = document.getElementById('soundToggleBtn');
+  if (soundBtn) {
+    soundBtn.addEventListener('click', toggleSound);
+  }
   initDeviceId();
   checkSavedSession();
   initSocket();
@@ -271,6 +481,7 @@ function initSocket() {
       currentRoom.players = data.players || [];
       updateTurnStateUI();
       showToast(`${data.player?.name || 'A player'} joined the room!`, 'info');
+      SoundFX.playPlayerJoined();
     }
   });
 
@@ -279,6 +490,7 @@ function initSocket() {
       currentRoom.players = data.players || [];
       updateTurnStateUI();
       showToast('A player left the room.', 'info');
+      SoundFX.playPlayerLeft();
     }
   });
 
@@ -295,6 +507,10 @@ function initSocket() {
     showToast(`🎮 GAME STARTED! ${isMyTurn ? 'YOU start first!' : currentTurnName + ' starts first!'}`, 'success');
     updateTurnStateUI();
     renderBingoBoard();
+
+    if (isMyTurn) {
+      SoundFX.playYourTurn();
+    }
   });
 
   socket.on('number_picked', (data) => {
@@ -326,9 +542,12 @@ function initSocket() {
     const isMyTurnNow = currentUser && currentUser.userId === currentTurnUserId;
     if (isMyTurnNow) {
       showToast(`🎯 Number ${number} picked! IT IS YOUR TURN NOW! 🔥`, 'success');
+      SoundFX.playYourTurn();
     } else if (isPicker) {
       showToast(`🎯 You picked ${number}! Next turn: ${nextTurnName}`, 'info');
+      SoundFX.playTileMarked();
     } else {
+      SoundFX.playTileClick();
       if (tileIdx !== -1 && !markedIndexes.has(tileIdx)) {
         showToast(`🎯 ${pickedBy} picked ${number}! Click ${number} on your board to mark it!`, 'warning');
       } else {
@@ -339,10 +558,16 @@ function initSocket() {
 
   socket.on('bingo_claimed', (data) => {
     roomStatus = 'finished';
-    const winnerName = data.winnerName || 'Player';
-    showToast(`🎉 ${winnerName} claimed BINGO and won!`, 'success');
+    const { winnerName, winnerUserId, position, timeDisplay, leaderboard = [] } = data;
+    const isMe = currentUser && currentUser.userId === winnerUserId;
 
-    document.getElementById('victoryMessage').textContent = data.message || `${winnerName} completed 5 lines and won!`;
+    showToast(`🎉 ${winnerName} claimed Position #${position || 1} BINGO in ${timeDisplay || '0m 00s'}!`, 'success');
+    SoundFX.playVictory();
+
+    document.getElementById('victoryTitle').textContent = isMe ? `🏆 YOU WON POSITION #${position || 1}!` : `🏆 MATCH RESULTS`;
+    document.getElementById('victoryMessage').textContent = `Bingo claimed in ${timeDisplay || '0m 00s'}!`;
+
+    renderVictoryLeaderboard(leaderboard);
     openModal('victoryModal');
     if (window.confetti) confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
   });
@@ -474,6 +699,7 @@ function handleTileClick(index, num) {
     markedIndexes.add(index);
     renderBingoBoard();
     checkCompletedLines();
+    SoundFX.playTileMarked();
     showToast(`Marked ${num} on your Bingo board! ✅`, 'success');
     return;
   }
@@ -484,6 +710,8 @@ function handleTileClick(index, num) {
     showToast(`It's not your turn to pick a new number! Waiting for ${currentTurnName || 'other player'}...`, 'error');
     return;
   }
+
+  SoundFX.playTileClick();
 
   // Send turn action to server via socket!
   socket.emit('pick_number', {
@@ -570,6 +798,38 @@ function handleHostStartGame() {
     roomId: currentRoom.roomId,
     userId: currentUser.userId
   });
+}
+
+function renderVictoryLeaderboard(leaderboard = []) {
+  const container = document.getElementById('victoryLeaderboardList');
+  if (!container) return;
+
+  if (!leaderboard || leaderboard.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No position data recorded yet.</p></div>';
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  const rewardCoins = [500, 300, 150, 50, 50, 50];
+
+  container.innerHTML = leaderboard.map((item, idx) => {
+    const pos = item.position || (idx + 1);
+    const medal = pos <= 3 ? medals[pos - 1] : `#${pos}`;
+    const coins = rewardCoins[pos - 1] || 50;
+    const isMe = currentUser && currentUser.userId === item.userId;
+
+    return `
+      <div class="leaderboard-item ${isMe ? 'is-me' : ''} pos-${pos}">
+        <div class="rank-badge">${medal}</div>
+        <img src="${item.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + item.userId}" class="rank-avatar" />
+        <div class="rank-info">
+          <span class="rank-name">${escapeHtml(item.name)} ${isMe ? '⭐' : ''}</span>
+          <span class="rank-time">⏱️ ${escapeHtml(item.timeDisplay || '0m 00s')}</span>
+        </div>
+        <div class="rank-reward">+${coins} 🪙</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function closeVictoryAndLeave() {
