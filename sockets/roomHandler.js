@@ -91,13 +91,18 @@ function registerRoomHandlers(io, socket) {
       const trimPassword = String(password).trim();
       const roomIsPublic = isPublic !== undefined ? Boolean(isPublic) : (trimPassword.length === 0);
 
+      let vivoxToken = null;
       const vivoxChannelUri = getVivoxChannelUri(finalRoomId);
       const vivoxUserUri = getVivoxUserUri(formattedUserId);
-      const vivoxToken = generateVivoxToken({
-        userUri: vivoxUserUri,
-        action: 'join',
-        targetUri: vivoxChannelUri
-      });
+      try {
+        vivoxToken = generateVivoxToken({
+          userUri: vivoxUserUri,
+          action: 'join',
+          targetUri: vivoxChannelUri
+        });
+      } catch (err) {
+        console.warn('[Vivox] Room creation token generation error (falling back to WebRTC):', err.message);
+      }
 
       const expiresAt = calculateExpiresAt();
       const creatorBingoCard = generateUniqueBingoCard([]);
@@ -310,13 +315,18 @@ function registerRoomHandlers(io, socket) {
 
       socket.join(formattedRoomId);
 
+      let vivoxToken = null;
       const vivoxChannelUri = updatedRoom.vivoxChannelUri || getVivoxChannelUri(formattedRoomId);
       const vivoxUserUri = getVivoxUserUri(formattedUserId);
-      const vivoxToken = generateVivoxToken({
-        userUri: vivoxUserUri,
-        action: 'join',
-        targetUri: vivoxChannelUri
-      });
+      try {
+        vivoxToken = generateVivoxToken({
+          userUri: vivoxUserUri,
+          action: 'join',
+          targetUri: vivoxChannelUri
+        });
+      } catch (err) {
+        console.warn('[Vivox] Join token generation error (falling back to WebRTC):', err.message);
+      }
 
       const sanitizedRoom = sanitizeRoom(updatedRoom);
 
@@ -688,22 +698,21 @@ function registerRoomHandlers(io, socket) {
    */
   socket.on('voice_signal', (payload = {}) => {
     try {
-      const { roomId, targetSocketId, signalData, type } = payload;
+      const { roomId, targetSocketId, signalData, type, senderUserId } = payload;
       if (!roomId) return;
       const formattedRoomId = String(roomId).toUpperCase().trim();
 
+      const signalDataPayload = {
+        senderSocketId: socket.id,
+        senderUserId: senderUserId || null,
+        signalData,
+        type
+      };
+
       if (targetSocketId) {
-        io.to(targetSocketId).emit('voice_signal', {
-          senderSocketId: socket.id,
-          signalData,
-          type
-        });
+        io.to(targetSocketId).emit('voice_signal', signalDataPayload);
       } else {
-        socket.to(formattedRoomId).emit('voice_signal', {
-          senderSocketId: socket.id,
-          signalData,
-          type
-        });
+        socket.to(formattedRoomId).emit('voice_signal', signalDataPayload);
       }
     } catch (err) {
       console.error('Socket voice_signal error:', err);
