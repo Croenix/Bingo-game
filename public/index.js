@@ -381,6 +381,39 @@ function updateUserNavUI() {
 // Lobby Data Fetching
 // ==========================================================================
 
+let challengeAutoScrollTimer = null;
+let challengeAutoScrollHovered = false;
+
+function initChallengeAutoScroll() {
+  const container = document.getElementById('challengesContainer');
+  if (!container) return;
+
+  if (challengeAutoScrollTimer) {
+    clearInterval(challengeAutoScrollTimer);
+    challengeAutoScrollTimer = null;
+  }
+
+  const onPause = () => { challengeAutoScrollHovered = true; };
+  const onResume = () => { challengeAutoScrollHovered = false; };
+
+  container.addEventListener('mouseenter', onPause);
+  container.addEventListener('mouseleave', onResume);
+  container.addEventListener('touchstart', onPause, { passive: true });
+  container.addEventListener('touchend', onResume, { passive: true });
+
+  challengeAutoScrollTimer = setInterval(() => {
+    if (challengeAutoScrollHovered) return;
+    if (container.scrollWidth <= container.clientWidth) return;
+
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    if (container.scrollLeft >= maxScroll - 15) {
+      container.scrollTo({ left: 0, behavior: 'smooth' });
+    } else {
+      container.scrollBy({ left: 310, behavior: 'smooth' });
+    }
+  }, 3500);
+}
+
 async function fetchChallenges() {
   const container = document.getElementById('challengesContainer');
   try {
@@ -396,33 +429,83 @@ async function fetchChallenges() {
       return;
     }
 
-    container.innerHTML = data.challenges.map(c => `
-      <div class="challenge-card" style="border-left: 4px solid ${c.gradientColors?.[0] || '#8b5cf6'};">
-        <div>
-          <div class="challenge-category">${escapeHtml(c.category || 'Standard')}</div>
-          <div class="challenge-title">${escapeHtml(c.title)}</div>
-        </div>
-        <div>
-          <div class="challenge-details">
-            <div class="detail-item">
-              <span class="detail-label">ENTRY FEE</span>
-              <span class="detail-val">🪙 ${c.entryFeeCoins}</span>
+    window.allActiveChallenges = data.challenges || [];
+    container.innerHTML = data.challenges.map(c => {
+      const entryIcon = c.entryCurrencyType === 'gems' ? '💎' : '🪙';
+      const rewardIcon = c.rewardCurrencyType === 'gems' ? '💎' : '🪙';
+      const entryVal = c.entryCoin !== undefined ? c.entryCoin : (c.entryFeeCoins !== undefined ? c.entryFeeCoins : 0);
+      const rewardVal = c.rewardCoin !== undefined ? c.rewardCoin : (c.prizeCoins !== undefined ? c.prizeCoins : 0);
+      const cardColor = c.color1 || (c.gradientColors && c.gradientColors[0]) || '#8b5cf6';
+      const cardColor2 = c.color2 || '#a855f7';
+      const coverImgStyle = c.coverImage ? `background-image: url('${escapeHtml(c.coverImage)}');` : `background: linear-gradient(135deg, ${cardColor}, ${cardColor2});`;
+
+      return `
+        <div class="challenge-card" style="border-top: 4px solid ${cardColor};">
+          <div class="challenge-card-banner" style="${coverImgStyle}">
+            <div class="challenge-card-content flex justify-between items-center w-full">
+              <span class="challenge-category badge badge-purple">${escapeHtml(c.category || 'Standard')}</span>
+              <span class="badge badge-outline"><i class="fa-solid fa-users text-purple"></i> ${c.maxPlayers || 4} Players</span>
             </div>
-            <div class="detail-item">
-              <span class="detail-label">PRIZE POOL</span>
-              <span class="detail-val">🪙 ${c.prizeCoins}</span>
+            <div class="challenge-card-content">
+              <div class="challenge-title text-white font-bold text-lg leading-tight" style="text-shadow: 0 2px 4px rgba(0,0,0,0.8);">${escapeHtml(c.title)}</div>
             </div>
           </div>
-          <button class="btn btn-primary btn-block btn-sm" onclick="quickCreateRoom('${escapeHtml(c.title)}')">
-            🎮 Play Challenge
-          </button>
+          <div class="challenge-card-body">
+            <div class="challenge-details">
+              <div class="detail-item">
+                <span class="detail-label">ENTRY FEE</span>
+                <span class="detail-val font-semibold">${entryIcon} ${Number(entryVal).toLocaleString()}</span>
+              </div>
+              <div class="detail-item text-right">
+                <span class="detail-label">PRIZE POOL</span>
+                <span class="detail-val text-green font-bold">${rewardIcon} ${Number(rewardVal).toLocaleString()}</span>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-block btn-sm" onclick="playFeaturedChallenge('${c._id}')">
+              🎮 Play Challenge
+            </button>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
+
+    initChallengeAutoScroll();
   } catch (err) {
     console.error('Fetch challenges failed:', err);
     container.innerHTML = `<div class="empty-state"><p>Unable to load challenges.</p></div>`;
   }
+}
+
+function playFeaturedChallenge(challengeId) {
+  if (!currentUser) return openModal('authModal');
+
+  const c = (window.allActiveChallenges || []).find(ch => ch._id === challengeId);
+  if (!c) return quickCreateRoom('Challenge Game');
+
+  const entryVal = c.entryCoin !== undefined ? c.entryCoin : (c.entryFeeCoins || 0);
+  const currencyType = c.entryCurrencyType === 'gems' ? 'gems' : 'coins';
+  const icon = currencyType === 'gems' ? '💎' : '🪙';
+
+  if (entryVal > 0) {
+    const userBal = currencyType === 'gems' ? (currentUser.gems || 0) : (currentUser.coins || 0);
+    if (userBal < entryVal) {
+      showToast(`Insufficient balance! You need at least ${entryVal.toLocaleString()} ${icon} to play this challenge.`, 'error');
+      return;
+    }
+  }
+
+  socket.emit('create_room', {
+    userId: currentUser.userId,
+    userName: currentUser.name,
+    profileImageUrl: currentUser.profileImageUrl,
+    roomName: `${c.title} #${Math.floor(100 + Math.random() * 890)}`,
+    capacity: c.maxPlayers || 4,
+    challengeId: c._id,
+    entryCoin: entryVal,
+    entryCurrencyType: currencyType,
+    rewardCoin: c.rewardCoin !== undefined ? c.rewardCoin : (c.prizeCoins || 0),
+    rewardCurrencyType: c.rewardCurrencyType === 'gems' ? 'gems' : 'coins'
+  });
 }
 
 async function fetchRooms() {
@@ -597,6 +680,19 @@ function initSocket() {
 
   socket.on('room_error', (data) => {
     showToast(data.error || 'Room error occurred', 'error');
+  });
+
+  socket.on('user_balance_updated', (data) => {
+    if (!currentUser) return;
+    if (data.coins !== undefined) currentUser.coins = data.coins;
+    if (data.gems !== undefined) currentUser.gems = data.gems;
+    localStorage.setItem('bingo_v2_user_session', JSON.stringify(currentUser));
+    updateUserNavUI();
+
+    if (data.reason) {
+      const type = data.deducted ? 'info' : (data.awarded ? 'success' : 'info');
+      showToast(`${data.reason}`, type);
+    }
   });
 
   socket.on('admin_clear_cache', async (data) => {

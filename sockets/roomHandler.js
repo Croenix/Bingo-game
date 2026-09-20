@@ -16,7 +16,23 @@ function registerRoomHandlers(io, socket) {
    */
   socket.on('create_room', async (payload = {}) => {
     try {
-      const { userId, userName, profileImageUrl = '', roomName: inputRoomName, name: inputName, capacity = 4, customRoomId, roomId: inputRoomId, password = '', isPublic } = payload;
+      const {
+        userId,
+        userName,
+        profileImageUrl = '',
+        roomName: inputRoomName,
+        name: inputName,
+        capacity = 4,
+        customRoomId,
+        roomId: inputRoomId,
+        password = '',
+        isPublic,
+        challengeId = '',
+        entryCoin = 0,
+        entryCurrencyType = 'coins',
+        rewardCoin = 0,
+        rewardCurrencyType = 'coins'
+      } = payload;
       if (!userId || !userName) {
         return sendError('create_room', 'userId and userName are required');
       }
@@ -40,6 +56,22 @@ function registerRoomHandlers(io, socket) {
       const userProfile = await User.findOne({ userId: formattedUserId });
       const trustedName = userProfile ? userProfile.name : String(userName).trim();
       const trustedProfileImageUrl = (userProfile && userProfile.profileImageUrl) ? userProfile.profileImageUrl : String(profileImageUrl).trim();
+
+      const reqEntry = Math.max(0, Number(entryCoin) || 0);
+      const reqReward = Math.max(0, Number(rewardCoin) || 0);
+      const entryType = entryCurrencyType === 'gems' ? 'gems' : 'coins';
+      const rewardType = rewardCurrencyType === 'gems' ? 'gems' : 'coins';
+
+      if (reqEntry > 0) {
+        if (!userProfile) {
+          return sendError('create_room', 'User profile not found to process entry fee');
+        }
+        const currentBal = entryType === 'gems' ? (userProfile.gems || 0) : (userProfile.coins || 0);
+        if (currentBal < reqEntry) {
+          const icon = entryType === 'gems' ? '💎' : '🪙';
+          return sendError('create_room', `Insufficient balance! You need at least ${reqEntry} ${icon} to enter this challenge.`);
+        }
+      }
 
       let finalRoomId = String(customRoomId || inputRoomId || '').toUpperCase().trim();
 
@@ -81,6 +113,13 @@ function registerRoomHandlers(io, socket) {
         status: 'waiting',
         vivoxChannelUri,
         expiresAt,
+        gameData: {
+          challengeId,
+          entryCoin: reqEntry,
+          entryCurrencyType: entryType,
+          rewardCoin: reqReward,
+          rewardCurrencyType: rewardType
+        },
         players: [
           {
             userId: formattedUserId,
@@ -94,6 +133,23 @@ function registerRoomHandlers(io, socket) {
           }
         ]
       });
+
+      if (reqEntry > 0) {
+        const updatedUser = await User.findOneAndUpdate(
+          { userId: formattedUserId },
+          { $inc: { [entryType]: -reqEntry } },
+          { new: true }
+        );
+        if (updatedUser) {
+          socket.emit('user_balance_updated', {
+            coins: updatedUser.coins,
+            gems: updatedUser.gems,
+            deducted: reqEntry,
+            currencyType: entryType,
+            reason: `Deducted ${reqEntry} ${entryType === 'gems' ? '💎' : '🪙'} challenge entry fee`
+          });
+        }
+      }
 
       await newRoom.save();
       socket.join(finalRoomId);
@@ -163,6 +219,35 @@ function registerRoomHandlers(io, socket) {
       }
 
       const existingPlayer = room.players.find(p => p.userId === formattedUserId);
+
+      if (!existingPlayer && room.gameData && Number(room.gameData.entryCoin) > 0) {
+        const reqEntry = Number(room.gameData.entryCoin);
+        const entryType = room.gameData.entryCurrencyType === 'gems' ? 'gems' : 'coins';
+        const icon = entryType === 'gems' ? '💎' : '🪙';
+
+        if (!userProfile) {
+          return sendError('join_room', 'User profile not found to process entry fee');
+        }
+        const currentBal = entryType === 'gems' ? (userProfile.gems || 0) : (userProfile.coins || 0);
+        if (currentBal < reqEntry) {
+          return sendError('join_room', `Insufficient balance! You need at least ${reqEntry} ${icon} to join this challenge room.`);
+        }
+
+        const updatedUser = await User.findOneAndUpdate(
+          { userId: formattedUserId },
+          { $inc: { [entryType]: -reqEntry } },
+          { new: true }
+        );
+        if (updatedUser) {
+          socket.emit('user_balance_updated', {
+            coins: updatedUser.coins,
+            gems: updatedUser.gems,
+            deducted: reqEntry,
+            currencyType: entryType,
+            reason: `Deducted ${reqEntry} ${icon} challenge entry fee`
+          });
+        }
+      }
 
       let updatedRoom;
       let playerBingoCard;
@@ -455,6 +540,34 @@ function registerRoomHandlers(io, socket) {
       }
 
       room.status = 'finished';
+
+      let prizeMsg = '';
+      if (position === 1 && gameData && Number(gameData.rewardCoin) > 0 && !gameData.rewardAwarded) {
+        const prizeAmount = Number(gameData.rewardCoin);
+        const prizeCurrency = gameData.rewardCurrencyType === 'gems' ? 'gems' : 'coins';
+        const currencyIcon = prizeCurrency === 'gems' ? '💎' : '🪙';
+
+        gameData.rewardAwarded = true;
+        room.markModified('gameData');
+
+        const updatedWinner = await User.findOneAndUpdate(
+          { userId: formattedUserId },
+          { $inc: { [prizeCurrency]: prizeAmount } },
+          { new: true }
+        );
+
+        if (updatedWinner && winner && winner.socketId) {
+          io.to(winner.socketId).emit('user_balance_updated', {
+            coins: updatedWinner.coins,
+            gems: updatedWinner.gems,
+            awarded: prizeAmount,
+            currencyType: prizeCurrency,
+            reason: `Won ${prizeAmount} ${currencyIcon} challenge reward!`
+          });
+        }
+        prizeMsg = ` 🎁 Winner earned ${prizeAmount} ${currencyIcon} prize reward!`;
+      }
+
       await room.save();
 
       io.to(formattedRoomId).emit('bingo_claimed', {
@@ -465,7 +578,7 @@ function registerRoomHandlers(io, socket) {
         timeDisplay: existingWin.timeDisplay,
         timeTakenSeconds: existingWin.timeTakenSeconds,
         leaderboard: winners,
-        message: `🎉 ${winnerName} claimed Position #${position} BINGO in ${existingWin.timeDisplay}!`
+        message: `🎉 ${winnerName} claimed Position #${position} BINGO in ${existingWin.timeDisplay}!${prizeMsg}`
       });
     } catch (err) {
       console.error('Socket claim_bingo error:', err);

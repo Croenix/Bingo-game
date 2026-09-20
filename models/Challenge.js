@@ -14,8 +14,16 @@ const challengeSchema = new mongoose.Schema(
     maxPlayers: { type: Number, required: true, min: 2, default: 4 },
     status: { type: String, enum: ['active', 'inactive'], default: 'active' }
   },
-  { timestamps: true }
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+challengeSchema.virtual('entryFeeCoins').get(function () {
+  return this.entryCoin;
+});
+
+challengeSchema.virtual('prizeCoins').get(function () {
+  return this.rewardCoin;
+});
 
 challengeSchema.index({ status: 1, category: 1, createdAt: -1 });
 challengeSchema.index({ createdAt: -1 });

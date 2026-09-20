@@ -683,8 +683,10 @@
     if (el.modalUsername) el.modalUsername.value = username || '';
     el.modalGmailId.value = gmail;
     if (el.modalDeviceId) el.modalDeviceId.value = deviceId || '';
-    el.modalCoins.value = coins !== undefined ? coins : '1000';
-    el.modalGems.value = gems !== undefined ? gems : '0';
+    const safeCoins = (coins !== undefined && coins !== 'undefined' && coins !== null && coins !== '') ? coins : '1000';
+    const safeGems = (gems !== undefined && gems !== 'undefined' && gems !== null && gems !== '') ? gems : '0';
+    el.modalCoins.value = safeCoins;
+    el.modalGems.value = safeGems;
     el.userModalTitle.innerHTML = '<i class="fa-solid fa-pen"></i> Edit User Profile & Device ID';
     el.userModalError.classList.add('hidden');
     el.userModal.classList.remove('hidden');

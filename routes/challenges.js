@@ -56,10 +56,16 @@ router.get('/', async (req, res, next) => {
       ];
     }
 
-    const [challenges, categories] = await Promise.all([
+    const [challengesRaw, categories] = await Promise.all([
       Challenge.find(filter).select('-__v').sort({ createdAt: -1 }).lean(),
       Challenge.distinct('category', { status: 'active' })
     ]);
+
+    const challenges = challengesRaw.map(c => ({
+      ...c,
+      entryFeeCoins: c.entryCoin !== undefined ? c.entryCoin : 0,
+      prizeCoins: c.rewardCoin !== undefined ? c.rewardCoin : 0
+    }));
 
     res.json({
       ok: true,
@@ -80,6 +86,10 @@ router.get('/:id', async (req, res, next) => {
   try {
     const challenge = await Challenge.findById(req.params.id).select('-__v').lean();
     if (!challenge) return res.status(404).json({ error: 'Challenge not found' });
+    
+    challenge.entryFeeCoins = challenge.entryCoin !== undefined ? challenge.entryCoin : 0;
+    challenge.prizeCoins = challenge.rewardCoin !== undefined ? challenge.rewardCoin : 0;
+
     res.json({ ok: true, challenge });
   } catch (e) {
     if (e.name === 'CastError') return res.status(400).json({ error: 'Invalid challenge ID' });
