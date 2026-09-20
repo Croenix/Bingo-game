@@ -5,10 +5,22 @@
 (function () {
   'use strict';
 
+  // Global Cache Data ID & Version Control
+  const BINGO_CACHE_VERSION = 'v2_2026_09_20';
+  try {
+    const activeVersion = localStorage.getItem('bingo_cache_version');
+    if (activeVersion !== BINGO_CACHE_VERSION) {
+      console.log('🔄 New Cache Data Version detected (' + BINGO_CACHE_VERSION + '). Purging legacy cache IDs...');
+      const legacyKeys = ['bingo_user_session', 'bingo_device_id', 'bingo_admin_token', 'bingo_admin_email', 'imgbb_api_key'];
+      legacyKeys.forEach(k => localStorage.removeItem(k));
+      localStorage.setItem('bingo_cache_version', BINGO_CACHE_VERSION);
+    }
+  } catch (e) {}
+
   // Application State
   const state = {
-    token: localStorage.getItem('bingo_admin_token') || '',
-    adminEmail: localStorage.getItem('bingo_admin_email') || '',
+    token: localStorage.getItem('bingo_v2_admin_token') || '',
+    adminEmail: localStorage.getItem('bingo_v2_admin_email') || '',
     currentPage: 1,
     limit: 20,
     search: '',
@@ -322,8 +334,8 @@
     if (ok && data.token) {
       state.token = data.token;
       state.adminEmail = email;
-      localStorage.setItem('bingo_admin_token', data.token);
-      localStorage.setItem('bingo_admin_email', email);
+      localStorage.setItem('bingo_v2_admin_token', data.token);
+      localStorage.setItem('bingo_v2_admin_email', email);
       showToast('Login successful! Welcome to Bingo Admin.', 'success');
       checkAuth();
     } else {
@@ -335,8 +347,8 @@
   function logoutAdmin() {
     state.token = '';
     state.adminEmail = '';
-    localStorage.removeItem('bingo_admin_token');
-    localStorage.removeItem('bingo_admin_email');
+    localStorage.removeItem('bingo_v2_admin_token');
+    localStorage.removeItem('bingo_v2_admin_email');
     checkAuth();
     showToast('Logged out successfully.', 'info');
   }
@@ -1561,7 +1573,7 @@
     const { ok, data } = await apiRequest('/api/admin/imgbb-key', 'POST', { apiKey });
     if (ok) {
       showToast('ImgBB API key saved to server .env file!', 'success');
-      localStorage.setItem('imgbb_api_key', apiKey);
+      localStorage.setItem('imgbb_v2_api_key', apiKey);
       fetchServerImgbbKey();
     } else {
       showToast(data.error || 'Failed to save ImgBB API key', 'error');

@@ -2,6 +2,24 @@
    Bingo Arena - Main Game Client JavaScript (Multiplayer Turn-Based)
    ========================================================================== */
 
+// Global Cache Data ID & Version Control
+const BINGO_CACHE_VERSION = 'v2_2026_09_20';
+(function autoPurgeLegacyCache() {
+  try {
+    const activeVersion = localStorage.getItem('bingo_cache_version');
+    if (activeVersion !== BINGO_CACHE_VERSION) {
+      console.log('🔄 New Cache Data Version detected (' + BINGO_CACHE_VERSION + '). Declining legacy cache IDs...');
+      // Discard all legacy cache data keys
+      const legacyKeys = ['bingo_user_session', 'bingo_device_id', 'bingo_admin_token', 'bingo_admin_email', 'imgbb_api_key'];
+      legacyKeys.forEach(k => localStorage.removeItem(k));
+      sessionStorage.clear();
+      localStorage.setItem('bingo_cache_version', BINGO_CACHE_VERSION);
+    }
+  } catch (e) {
+    console.warn('Auto cache purge failed:', e);
+  }
+})();
+
 // Global State
 let currentUser = null;
 let socket = null;
@@ -239,20 +257,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================================================
 
 function initDeviceId() {
-  let deviceId = localStorage.getItem('bingo_device_id');
+  let deviceId = localStorage.getItem('bingo_v2_device_id');
   if (!deviceId) {
     deviceId = 'web_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now().toString(36);
-    localStorage.setItem('bingo_device_id', deviceId);
+    localStorage.setItem('bingo_v2_device_id', deviceId);
   }
   return deviceId;
 }
 
 function getDeviceId() {
-  return localStorage.getItem('bingo_device_id') || initDeviceId();
+  return localStorage.getItem('bingo_v2_device_id') || initDeviceId();
 }
 
 function checkSavedSession() {
-  const savedUserJson = localStorage.getItem('bingo_user_session');
+  const savedUserJson = localStorage.getItem('bingo_v2_user_session');
   if (savedUserJson) {
     try {
       const savedUser = JSON.parse(savedUserJson);
@@ -293,7 +311,7 @@ async function loginUser(payload, silent = false) {
     }
 
     currentUser = data.user;
-    localStorage.setItem('bingo_user_session', JSON.stringify(currentUser));
+    localStorage.setItem('bingo_v2_user_session', JSON.stringify(currentUser));
     updateUserNavUI();
     closeModal('authModal');
 
@@ -333,7 +351,7 @@ function handleGuestLogin() {
 }
 
 function handleLogout() {
-  localStorage.removeItem('bingo_user_session');
+  localStorage.removeItem('bingo_v2_user_session');
   currentUser = null;
   closeModal('profileModal');
   updateUserNavUI();
