@@ -119,6 +119,9 @@
               <div class="live-clock" id="liveClock"><i class="fa-regular fa-clock"></i> --:--:--</div>
               <div class="server-uptime-tag" id="headerUptimeTag"><i class="fa-solid fa-bolt"></i> Uptime: --</div>
             </div>
+            <button id="globalClearCacheBtn" class="btn btn-outline-danger" title="Clear Cache Memory across All User Devices">
+              <i class="fa-solid fa-broom text-rose"></i> Clear All Users Cache
+            </button>
             <button id="globalRefreshBtn" class="btn btn-outline" title="Refresh All Data">
               <i class="fa-solid fa-rotate-right"></i> Refresh Data
             </button>
@@ -334,11 +337,14 @@
                 </div>
 
                 <div class="toolbar-right">
+                  <button id="usersClearCacheBtn" class="btn btn-outline-danger" title="Clear Cache Memory across All Devices">
+                    <i class="fa-solid fa-broom text-rose"></i> Clear All Users Cache
+                  </button>
                   <button id="addNewUserModalBtn" class="btn btn-primary">
                     <i class="fa-solid fa-user-plus"></i> Add User
                   </button>
                   <button id="refreshUsersBtn" class="btn btn-outline" title="Reload User Table">
-                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <i class="fa-solid fa-rotate-right"></i>
                   </button>
                 </div>
               </div>
@@ -563,6 +569,24 @@
           <!-- TAB 5: SERVER OPTIONS & TOOLS -->
           <section id="optionsTab" class="tab-pane">
             <div class="options-grid">
+              <!-- Global Device Cache Reset Panel -->
+              <div class="panel glass-panel full-width border-rose">
+                <div class="panel-header">
+                  <h3><i class="fa-solid fa-broom text-rose"></i> Global Device Cache & Session Memory Reset</h3>
+                </div>
+                <div class="panel-body">
+                  <p class="text-sub mb-3">
+                    Instantly clear local device cache memory, active room session tokens, and client local storage data across <strong>ALL user devices & browsers</strong> globally via real-time Socket broadcast.
+                  </p>
+                  <div class="flex-actions gap-3" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                    <button id="clearAllCacheBtn" class="btn btn-danger">
+                      <i class="fa-solid fa-trash-can"></i> Clear All Device & System Cache Memory
+                    </button>
+                    <span id="cacheClearStatusText" class="text-sub"><i class="fa-regular fa-clock"></i> Last cleared: Never</span>
+                  </div>
+                </div>
+              </div>
+
               <div class="panel glass-panel">
                 <div class="panel-header">
                   <h3><i class="fa-solid fa-gears"></i> Server Options & Configuration</h3>

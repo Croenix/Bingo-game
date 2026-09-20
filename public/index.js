@@ -580,6 +580,18 @@ function initSocket() {
   socket.on('room_error', (data) => {
     showToast(data.error || 'Room error occurred', 'error');
   });
+
+  socket.on('admin_clear_cache', (data) => {
+    showToast('⚡ Admin reset system cache memory! Refreshing session...', 'warning');
+    try {
+      localStorage.removeItem('bingo_user_session');
+      sessionStorage.clear();
+    } catch (e) {}
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 1200);
+  });
 }
 
 function handleRoomJoinedOrCreated(data) {

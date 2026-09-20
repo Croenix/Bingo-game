@@ -202,6 +202,11 @@
     picturesGalleryGrid: document.getElementById('picturesGalleryGrid'),
     galleryCount: document.getElementById('galleryCount'),
 
+    clearAllCacheBtn: document.getElementById('clearAllCacheBtn'),
+    globalClearCacheBtn: document.getElementById('globalClearCacheBtn'),
+    usersClearCacheBtn: document.getElementById('usersClearCacheBtn'),
+    cacheClearStatusText: document.getElementById('cacheClearStatusText'),
+
     toastContainer: document.getElementById('toastContainer')
   };
 
@@ -1402,7 +1407,34 @@
       });
     }
 
-    // Profile Pictures Events
+    async function handleClearAllCache() {
+      if (!confirm('Are you sure you want to clear device cache memory & local sessions across ALL user devices globally?')) {
+        return;
+      }
+
+      const btns = [el.clearAllCacheBtn, el.globalClearCacheBtn, el.usersClearCacheBtn].filter(Boolean);
+      btns.forEach(b => { b.disabled = true; });
+
+      showToast('Clearing device cache memory across all devices...', 'info');
+      const { ok, data } = await apiRequest('/api/admin/clear-all-cache', 'POST');
+
+      btns.forEach(b => { b.disabled = false; });
+
+      if (ok) {
+        showToast('All device & system cache memory cleared successfully across all users! 🧹', 'success');
+        if (el.cacheClearStatusText) {
+          const nowStr = new Date().toLocaleTimeString();
+          el.cacheClearStatusText.innerHTML = `<i class="fa-regular fa-clock"></i> Last cleared: ${nowStr}`;
+        }
+      } else {
+        showToast((data && data.error) || 'Failed to clear cache memory', 'error');
+      }
+    }
+
+    if (el.clearAllCacheBtn) el.clearAllCacheBtn.addEventListener('click', handleClearAllCache);
+    if (el.globalClearCacheBtn) el.globalClearCacheBtn.addEventListener('click', handleClearAllCache);
+    if (el.usersClearCacheBtn) el.usersClearCacheBtn.addEventListener('click', handleClearAllCache);
+
     if (el.saveImgbbKeyBtn) el.saveImgbbKeyBtn.addEventListener('click', saveServerImgbbKey);
 
     if (el.profilePicFile) {

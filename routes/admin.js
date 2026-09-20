@@ -570,4 +570,36 @@ router.post('/imgbb-key', requireAdmin, (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/admin/clear-all-cache
+ * Clears server-side telemetry cache, expired room objects, and broadcasts a global real-time
+ * Socket event ('admin_clear_cache') to instantly wipe client localStorage & device cache memory across all active user devices.
+ */
+router.post('/clear-all-cache', requireAdmin, async (req, res, next) => {
+  try {
+    dbStatusCache = null;
+    lastDbStatusFetch = 0;
+
+    const Room = require('../models/Room');
+    const now = new Date();
+    await Room.deleteMany({ expiresAt: { $lte: now } });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('admin_clear_cache', {
+        timestamp: Date.now(),
+        message: 'Admin cleared all device & server cache memory globally.'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: 'All device cache memory & server caches cleared successfully across all connected devices.',
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;
