@@ -1233,20 +1233,31 @@ const VoiceChat = {
       });
     }
 
-    // 3. Fetch Agora App ID from server or global fallback
-    let appId = window.AGORA_APP_ID || 'a1b2c3d4e5f67890a1b2c3d4e5f67890';
-    try {
-      const res = await fetch('/api/agora/config');
-      const data = await res.json();
-      if (data && data.appId) appId = data.appId;
-    } catch (e) {}
-
     const formattedRoomId = String(roomId).toUpperCase().trim();
     const uid = (currentUser && currentUser.userId) ? String(currentUser.userId) : String(socket ? socket.id : Date.now());
 
+    // 3. Fetch signed Agora RTC token from server
+    let appId = window.AGORA_APP_ID || 'f0122fada995482c807c285791825f72';
+    let token = null;
+
     try {
-      // 4. Join the voice channel named after roomId
-      await this.client.join(appId, formattedRoomId, null, uid);
+      const res = await fetch('/api/agora/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelName: formattedRoomId, uid })
+      });
+      const data = await res.json();
+      if (data && data.ok) {
+        if (data.appId) appId = data.appId;
+        token = data.token || null;
+      }
+    } catch (e) {
+      console.warn('Agora token fetch error:', e);
+    }
+
+    try {
+      // 4. Join the voice channel named after roomId using signed token
+      await this.client.join(appId, formattedRoomId, token, uid);
 
       // 5. Create & publish local microphone audio track
       this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
