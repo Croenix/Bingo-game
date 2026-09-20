@@ -61,7 +61,18 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/turn-config', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  const coturnHost = String(process.env.COTURN_HOST || process.env.COTURN_PUBLIC_IP || '').trim();
+  let rawHost = String(process.env.COTURN_HOST || process.env.COTURN_PUBLIC_IP || '').trim();
+  rawHost = rawHost.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].trim();
+
+  // Validate that host is not empty, does not contain placeholders like <YOUR_...>, spaces, or invalid chars
+  const isValidHost = Boolean(
+    rawHost &&
+    !rawHost.includes('<') &&
+    !rawHost.includes('>') &&
+    !rawHost.includes(' ') &&
+    !rawHost.toLowerCase().includes('your_')
+  );
+
   const coturnPort = Number(process.env.COTURN_PORT || 3478);
   const coturnUser = String(process.env.COTURN_USERNAME || 'gameuser').trim();
   const coturnPass = String(process.env.COTURN_PASSWORD || 'gamepassword123').trim();
@@ -74,11 +85,11 @@ app.get('/api/turn-config', (req, res) => {
     { urls: 'stun:global.stun.twilio.com:3478' }
   ];
 
-  if (coturnHost) {
+  if (isValidHost) {
     iceServers.push({
       urls: [
-        `turn:${coturnHost}:${coturnPort}?transport=udp`,
-        `turn:${coturnHost}:${coturnPort}?transport=tcp`
+        `turn:${rawHost}:${coturnPort}?transport=udp`,
+        `turn:${rawHost}:${coturnPort}?transport=tcp`
       ],
       username: coturnUser,
       credential: coturnPass,
@@ -89,8 +100,7 @@ app.get('/api/turn-config', (req, res) => {
       urls: [
         'turn:openrelay.metered.ca:80',
         'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp',
-        'turns:openrelay.metered.ca:443'
+        'turn:openrelay.metered.ca:443?transport=tcp'
       ],
       username: 'openrelayproject',
       credential: 'openrelayproject',

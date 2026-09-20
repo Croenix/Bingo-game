@@ -1178,13 +1178,39 @@ const VoiceChat = {
   voiceStates: {}, // userId / socketId -> { isMicMuted, isSpeakerMuted }
   iceServersConfig: null,
 
+  sanitizeIceServers(servers) {
+    if (!Array.isArray(servers)) return [];
+    const validServers = [];
+    servers.forEach(s => {
+      if (!s || !s.urls) return;
+      const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+      const cleanUrls = urls.filter(u => {
+        if (typeof u !== 'string') return false;
+        const str = u.trim();
+        if (str.includes('<') || str.includes('>') || str.includes(' ') || str.toLowerCase().includes('your_')) return false;
+        return true;
+      });
+      if (cleanUrls.length > 0) {
+        const serverObj = { urls: cleanUrls.length === 1 ? cleanUrls[0] : cleanUrls };
+        if (s.username) serverObj.username = String(s.username).trim();
+        if (s.credential) serverObj.credential = String(s.credential).trim();
+        if (s.credentialType) serverObj.credentialType = s.credentialType;
+        validServers.push(serverObj);
+      }
+    });
+    return validServers;
+  },
+
   async fetchIceServers() {
     try {
       const res = await fetch('/api/turn-config');
       const data = await res.json();
       if (data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
-        this.iceServersConfig = data.iceServers;
-        return;
+        const clean = this.sanitizeIceServers(data.iceServers);
+        if (clean.length > 0) {
+          this.iceServersConfig = clean;
+          return;
+        }
       }
     } catch (e) {
       console.warn('[VoiceChat] Failed to fetch /api/turn-config, using fallback:', e);
@@ -1199,8 +1225,7 @@ const VoiceChat = {
         urls: [
           'turn:openrelay.metered.ca:80',
           'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp',
-          'turns:openrelay.metered.ca:443'
+          'turn:openrelay.metered.ca:443?transport=tcp'
         ],
         username: 'openrelayproject',
         credential: 'openrelayproject',
@@ -1325,8 +1350,7 @@ const VoiceChat = {
         urls: [
           'turn:openrelay.metered.ca:80',
           'turn:openrelay.metered.ca:443',
-          'turn:openrelay.metered.ca:443?transport=tcp',
-          'turns:openrelay.metered.ca:443'
+          'turn:openrelay.metered.ca:443?transport=tcp'
         ],
         username: 'openrelayproject',
         credential: 'openrelayproject',
@@ -1334,13 +1358,28 @@ const VoiceChat = {
       }
     ];
 
+    const rawServers = (this.iceServersConfig && this.iceServersConfig.length > 0) ? this.iceServersConfig : defaultServers;
+    const sanitizedServers = this.sanitizeIceServers(rawServers);
+
     const configuration = {
-      iceServers: (this.iceServersConfig && this.iceServersConfig.length > 0) ? this.iceServersConfig : defaultServers,
+      iceServers: sanitizedServers.length > 0 ? sanitizedServers : this.sanitizeIceServers(defaultServers),
       iceCandidatePoolSize: 10,
       iceTransportPolicy: 'all'
     };
 
-    const pc = new RTCPeerConnection(configuration);
+    let pc;
+    try {
+      pc = new RTCPeerConnection(configuration);
+    } catch (err) {
+      console.warn('[VoiceChat] Failed to construct RTCPeerConnection with custom configuration, using STUN fallback:', err);
+      const fallbackConfig = {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      };
+      pc = new RTCPeerConnection(fallbackConfig);
+    }
     this.peers[targetSocketId] = pc;
 
     if (this.localStream) {
