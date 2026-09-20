@@ -21,9 +21,12 @@
   <div id="app">
     <!-- Top Navigation Bar -->
     <header class="navbar">
-      <div class="nav-brand">
+      <div class="nav-brand" onclick="switchView('lobbyView')" style="cursor: pointer;">
         <div class="logo-icon">🎰</div>
-        <span class="logo-text">BINGO<span class="logo-highlight">ARENA</span></span>
+        <div class="logo-stacked">
+          <span class="logo-top">BINGO</span>
+          <span class="logo-bottom">ARENA</span>
+        </div>
       </div>
 
       <div class="nav-user" id="navUserBadge" style="display: none;">

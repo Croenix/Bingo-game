@@ -93,14 +93,24 @@ body {
   filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.5));
 }
 
-.logo-text {
-  font-size: 1.4rem;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+.logo-stacked {
+  display: flex;
+  flex-direction: column;
+  line-height: 0.95;
+  user-select: none;
+}
+
+.logo-top {
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 1px;
   color: #ffffff;
 }
 
-.logo-highlight {
+.logo-bottom {
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 1px;
   color: var(--primary);
   text-shadow: 0 0 12px var(--primary-glow);
 }
