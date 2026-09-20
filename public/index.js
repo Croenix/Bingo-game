@@ -1262,9 +1262,16 @@ const VoiceChat = {
 
       showToast('🎙️ Live Voice Chat Connected (Agora)!', 'success');
     } catch (err) {
-      console.warn('Agora mic capture error or permission denied:', err);
+      console.warn('Agora voice chat join error:', err);
       this.isMicMuted = true;
-      showToast('🎙️ Voice Chat: Mic muted or permission needed. Click Mic ON to activate!', 'info');
+
+      const errStr = String(err && (err.message || err.code || err.reason) || '');
+      if (errStr.includes('invalid vendor key') || errStr.includes('appid') || errStr.includes('CAN_NOT_GET_GATEWAY_SERVER')) {
+        showToast('⚠️ Agora Error: Invalid App ID! Please update AGORA_APP_ID in .env file with your Agora Console App ID.', 'warning', 7000);
+      } else {
+        showToast('🎙️ Voice Chat: Mic muted or permission needed. Click Mic ON to activate!', 'info');
+      }
+
       this.updateControlsUI();
       this.broadcastState();
     }
