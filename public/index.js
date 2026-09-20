@@ -294,6 +294,7 @@ function initSocket() {
     const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
     showToast(`🎮 GAME STARTED! ${isMyTurn ? 'YOU start first!' : currentTurnName + ' starts first!'}`, 'success');
     updateTurnStateUI();
+    renderBingoBoard();
   });
 
   socket.on('number_picked', (data) => {
