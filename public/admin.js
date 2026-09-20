@@ -106,6 +106,10 @@
     userTableBody: document.getElementById('userTableBody'),
     paginationInfo: document.getElementById('paginationInfo'),
     paginationControls: document.getElementById('paginationControls'),
+    userTabTotalUsers: document.getElementById('userTabTotalUsers'),
+    userTabTotalCoins: document.getElementById('userTabTotalCoins'),
+    userTabTotalGems: document.getElementById('userTabTotalGems'),
+    userTabTodayUsers: document.getElementById('userTabTodayUsers'),
 
     // Challenges Tab
     challengeSearchInput: document.getElementById('challengeSearchInput'),
@@ -512,7 +516,7 @@
   async function fetchUsers() {
     el.userTableBody.innerHTML = `
       <tr>
-        <td colspan="8" class="text-center py-4">
+        <td colspan="10" class="text-center py-4">
           <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: var(--primary);"></i>
           <p class="mt-2 text-sub">Loading user accounts...</p>
         </td>
@@ -530,7 +534,7 @@
     if (!ok) {
       el.userTableBody.innerHTML = `
         <tr>
-          <td colspan="8" class="text-center py-4 text-danger">
+          <td colspan="10" class="text-center py-4 text-danger">
             <i class="fa-solid fa-triangle-exclamation fa-2x"></i>
             <p class="mt-2">${data.error || 'Failed to load user list'}</p>
           </td>
@@ -546,10 +550,30 @@
     state.totalUsers = pagination.total || 0;
     state.totalPages = pagination.totalPages || 1;
 
+    // Calculate Summary Stats for User Control Tab Header Cards
+    let totalCoins = 0;
+    let totalGems = 0;
+    let todayCount = 0;
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    users.forEach(u => {
+      totalCoins += (u.coins || 0);
+      totalGems += (u.gems || 0);
+      if (u.createdAt && (now - new Date(u.createdAt).getTime()) <= oneDayMs) {
+        todayCount++;
+      }
+    });
+
+    if (el.userTabTotalUsers) el.userTabTotalUsers.textContent = (pagination.total || 0).toLocaleString();
+    if (el.userTabTotalCoins) el.userTabTotalCoins.textContent = totalCoins.toLocaleString();
+    if (el.userTabTotalGems) el.userTabTotalGems.textContent = totalGems.toLocaleString();
+    if (el.userTabTodayUsers) el.userTabTodayUsers.textContent = todayCount.toLocaleString();
+
     if (users.length === 0) {
       el.userTableBody.innerHTML = `
         <tr>
-          <td colspan="9" class="text-center py-4">
+          <td colspan="10" class="text-center py-4">
             <i class="fa-solid fa-folder-open fa-2x" style="color: var(--text-dim);"></i>
             <p class="mt-2 text-sub">No user records found.</p>
           </td>
@@ -580,27 +604,27 @@
 
       html += `
         <tr>
-          <td>${itemNum}</td>
-          <td>
-            <div class="user-cell">
+          <td class="col-num">${itemNum}</td>
+          <td class="col-profile">
+            <div class="user-cell" title="${escapeHtml(u.name)}">
               <div class="avatar-circle">${initial}</div>
               <span class="user-name-text">${escapeHtml(u.name)}</span>
             </div>
           </td>
-          <td>${usernameTag}</td>
-          <td>
-            <span class="gmail-tag"><i class="fa-solid fa-envelope"></i> ${escapeHtml(u.gmailId)}</span>
+          <td class="col-username">${usernameTag}</td>
+          <td class="col-gmail">
+            <span class="gmail-tag" title="${escapeHtml(u.gmailId)}"><i class="fa-solid fa-envelope"></i> ${escapeHtml(u.gmailId)}</span>
           </td>
-          <td>${deviceTag}</td>
-          <td><span class="coin-badge">🟡 ${coins}</span></td>
-          <td><span class="gem-badge">💎 ${gems}</span></td>
-          <td>
-            <span class="id-badge copy-trigger" title="Click to copy ID" data-copy="${u._id}">
+          <td class="col-device">${deviceTag}</td>
+          <td class="col-coins text-right"><span class="coin-badge">🟡 ${coins}</span></td>
+          <td class="col-gems text-right"><span class="gem-badge">💎 ${gems}</span></td>
+          <td class="col-objectid">
+            <span class="id-badge copy-trigger" title="Click to copy ID: ${u._id}" data-copy="${u._id}">
               ${u._id} <i class="fa-regular fa-copy"></i>
             </span>
           </td>
-          <td class="text-sub">${formattedDate}</td>
-          <td>
+          <td class="col-date text-sub">${formattedDate}</td>
+          <td class="col-actions text-right">
             <div class="action-btns">
               <button class="btn-icon" title="View Document JSON" data-action="view" data-id="${u._id}">
                 <i class="fa-solid fa-eye"></i>
@@ -1351,6 +1375,38 @@
     });
 
     el.userForm.addEventListener('submit', handleSaveUser);
+
+    // Preset reward chips click handlers
+    el.userForm.addEventListener('click', (e) => {
+      const addCoinsBtn = e.target.closest('[data-add-coins]');
+      const setCoinsBtn = e.target.closest('[data-set-coins]');
+      const addGemsBtn = e.target.closest('[data-add-gems]');
+      const setGemsBtn = e.target.closest('[data-set-gems]');
+
+      if (addCoinsBtn && el.modalCoins) {
+        const current = Math.max(0, Number(el.modalCoins.value) || 0);
+        const add = Number(addCoinsBtn.dataset.addCoins) || 0;
+        el.modalCoins.value = current + add;
+        showToast(`Added ${add.toLocaleString()} 🟡 Coins`, 'info');
+      }
+      if (setCoinsBtn && el.modalCoins) {
+        const val = Number(setCoinsBtn.dataset.setCoins) || 0;
+        el.modalCoins.value = val;
+        showToast(`Coins set to ${val.toLocaleString()} 🟡`, 'info');
+      }
+      if (addGemsBtn && el.modalGems) {
+        const current = Math.max(0, Number(el.modalGems.value) || 0);
+        const add = Number(addGemsBtn.dataset.addGems) || 0;
+        el.modalGems.value = current + add;
+        showToast(`Added ${add.toLocaleString()} 💎 Gems`, 'info');
+      }
+      if (setGemsBtn && el.modalGems) {
+        const val = Number(setGemsBtn.dataset.setGems) || 0;
+        el.modalGems.value = val;
+        showToast(`Gems set to ${val.toLocaleString()} 💎`, 'info');
+      }
+    });
+
     el.closeUserModalBtn.addEventListener('click', () => el.userModal.classList.add('hidden'));
     el.cancelUserModalBtn.addEventListener('click', () => el.userModal.classList.add('hidden'));
 

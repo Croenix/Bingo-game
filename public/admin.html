@@ -329,6 +329,45 @@
 
           <!-- TAB 2: USER CONTROL & REWARDS -->
           <section id="usersTab" class="tab-pane">
+            <!-- User Stats Summary Metrics Grid -->
+            <div class="metrics-grid mb-3">
+              <div class="metric-card glass-card">
+                <div class="metric-icon purple"><i class="fa-solid fa-users"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Total Registered Users</span>
+                  <h3 class="metric-value" id="userTabTotalUsers">--</h3>
+                  <span class="metric-sub">Active game accounts</span>
+                </div>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon amber"><i class="fa-solid fa-coins"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Total Coins Economy</span>
+                  <h3 class="metric-value" id="userTabTotalCoins">--</h3>
+                  <span class="metric-sub">🟡 Distributed across users</span>
+                </div>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon cyan"><i class="fa-solid fa-gem"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">Total Gems Economy</span>
+                  <h3 class="metric-value" id="userTabTotalGems">--</h3>
+                  <span class="metric-sub">💎 Distributed across users</span>
+                </div>
+              </div>
+
+              <div class="metric-card glass-card">
+                <div class="metric-icon green"><i class="fa-solid fa-user-check"></i></div>
+                <div class="metric-info">
+                  <span class="metric-label">New Users Today</span>
+                  <h3 class="metric-value" id="userTabTodayUsers">--</h3>
+                  <span class="metric-sub">Joined in last 24 hours</span>
+                </div>
+              </div>
+            </div>
+
             <div class="panel glass-panel">
               <!-- Toolbar -->
               <div class="table-toolbar">
@@ -364,19 +403,19 @@
 
               <!-- User Data Table -->
               <div class="table-responsive">
-                <table class="data-table">
+                <table class="data-table users-table">
                   <thead>
                     <tr>
-                      <th width="50">#</th>
-                      <th>User Profile</th>
-                      <th>Username 🎮</th>
-                      <th>Gmail ID</th>
-                      <th>Device ID</th>
-                      <th>Coins 🟡</th>
-                      <th>Gems 💎</th>
-                      <th>User Object ID</th>
-                      <th>Created Date</th>
-                      <th width="140" class="text-right">Actions</th>
+                      <th class="col-num">#</th>
+                      <th class="col-profile">User Profile</th>
+                      <th class="col-username">Username 🎮</th>
+                      <th class="col-gmail">Gmail ID</th>
+                      <th class="col-device">Device ID</th>
+                      <th class="col-coins text-right">Coins 🟡</th>
+                      <th class="col-gems text-right">Gems 💎</th>
+                      <th class="col-objectid">User Object ID</th>
+                      <th class="col-date">Created Date</th>
+                      <th class="col-actions text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody id="userTableBody">
@@ -788,7 +827,7 @@
 
     <!-- Add / Edit User Modal (With Coins, Gems & Device ID) -->
     <div id="userModal" class="modal-overlay hidden">
-      <div class="modal-card glass-panel">
+      <div class="modal-card glass-panel modal-user-custom">
         <div class="modal-header">
           <h3 id="userModalTitle"><i class="fa-solid fa-user-plus"></i> Add New User</h3>
           <button class="modal-close" id="closeUserModalBtn"><i class="fa-solid fa-xmark"></i></button>
@@ -796,6 +835,10 @@
         <form id="userForm">
           <input type="hidden" id="editUserId">
           <div class="modal-body">
+            <!-- Section 1: Account Profile -->
+            <div class="form-section-header">
+              <i class="fa-solid fa-id-card text-purple"></i> Account Profile & Identity
+            </div>
             <div class="grid-2">
               <div class="form-group">
                 <label for="modalUserName">User Full Name *</label>
@@ -816,14 +859,30 @@
               <input type="text" id="modalDeviceId" placeholder="e.g. device_9876543210abcdef">
             </div>
             
-            <div class="grid-2 mt-2">
+            <!-- Section 2: Rewards & Virtual Currencies -->
+            <div class="form-section-header mt-3">
+              <i class="fa-solid fa-sack-dollar text-amber"></i> Rewards & Currency Controls
+            </div>
+            <div class="grid-2 mt-1">
               <div class="form-group">
-                <label for="modalCoins"><i class="fa-solid fa-coins text-amber"></i> Coins (🟡)</label>
+                <label for="modalCoins"><i class="fa-solid fa-coins text-amber"></i> Coins Balance (🟡)</label>
                 <input type="number" id="modalCoins" min="0" value="1000" placeholder="1000">
+                <div class="preset-chips-row">
+                  <button type="button" class="chip-btn" data-add-coins="500">+500 🟡</button>
+                  <button type="button" class="chip-btn" data-add-coins="1000">+1k 🟡</button>
+                  <button type="button" class="chip-btn" data-add-coins="5000">+5k 🟡</button>
+                  <button type="button" class="chip-btn reset" data-set-coins="1000">Set 1k</button>
+                </div>
               </div>
               <div class="form-group">
-                <label for="modalGems"><i class="fa-solid fa-gem text-cyan"></i> Gems (💎)</label>
+                <label for="modalGems"><i class="fa-solid fa-gem text-cyan"></i> Gems Balance (💎)</label>
                 <input type="number" id="modalGems" min="0" value="0" placeholder="10">
+                <div class="preset-chips-row">
+                  <button type="button" class="chip-btn cyan" data-add-gems="10">+10 💎</button>
+                  <button type="button" class="chip-btn cyan" data-add-gems="50">+50 💎</button>
+                  <button type="button" class="chip-btn cyan" data-add-gems="100">+100 💎</button>
+                  <button type="button" class="chip-btn reset" data-set-gems="0">Reset 0</button>
+                </div>
               </div>
             </div>
 
