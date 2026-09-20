@@ -1428,6 +1428,13 @@
 
       if (ok) {
         showToast('All device & system cache memory cleared successfully across all users! 🧹', 'success');
+        try {
+          if ('caches' in window) {
+            caches.keys().then((names) => {
+              names.forEach((name) => caches.delete(name));
+            });
+          }
+        } catch (err) {}
         const statusEl = document.getElementById('cacheClearStatusText');
         if (statusEl) {
           const nowStr = new Date().toLocaleTimeString();

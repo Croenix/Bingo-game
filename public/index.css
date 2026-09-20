@@ -837,6 +837,22 @@ body {
 .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
 .btn-block { width: 100%; }
 
+.btn-icon-only {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
 .glow-effect {
   box-shadow: 0 0 20px var(--primary-glow);
 }
@@ -1187,9 +1203,17 @@ body {
    Full Mobile Responsive UI/UX Media Queries (< 768px & < 480px)
    ========================================================================== */
 
+/* ==========================================================================
+   Full Mobile Responsive UI/UX Media Queries (< 768px, < 640px, & < 480px)
+   ========================================================================== */
+
 @media (max-width: 768px) {
+  #app {
+    min-height: 100dvh;
+  }
+
   .navbar {
-    padding: 0.6rem 0.8rem;
+    padding: max(0.6rem, env(safe-area-inset-top)) 0.8rem 0.6rem 0.8rem;
   }
 
   .nav-user {
@@ -1214,8 +1238,12 @@ body {
   }
 
   .user-avatar {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .main-container {
+    padding: 0.85rem 0.75rem;
   }
 
   .game-header {
@@ -1243,17 +1271,36 @@ body {
     justify-content: space-between;
     margin-right: 0;
     margin-bottom: 0.3rem;
+    gap: 0.4rem;
   }
 
   .btn-voice {
     flex: 1;
     justify-content: center;
-    font-size: 0.78rem;
-    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+    padding: 0.5rem;
+    min-height: 40px;
+  }
+
+  .players-strip {
+    gap: 0.5rem;
+    padding: 0.2rem 0.2rem 0.5rem 0.2rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+  }
+
+  .players-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .player-badge {
+    scroll-snap-align: start;
+    flex-shrink: 0;
   }
 
   .bingo-header-card {
-    padding: 0.6rem 0.8rem;
+    padding: 0.6rem 0.85rem;
   }
 
   .bingo-letters {
@@ -1261,13 +1308,13 @@ body {
   }
 
   .bingo-letter {
-    width: 32px;
-    height: 32px;
+    width: clamp(32px, 8vw, 38px);
+    height: clamp(32px, 8vw, 38px);
     font-size: 1rem;
   }
 
   .bingo-lines-count {
-    font-size: 0.82rem;
+    font-size: 0.85rem;
   }
 
   .drawn-ball-banner {
@@ -1279,32 +1326,90 @@ body {
   }
 
   .ball-number {
-    font-size: 1.75rem;
+    font-size: 1.8rem;
+  }
+
+  .board-container {
+    width: 100%;
+    padding: 0;
+  }
+
+  .bingo-grid {
+    width: min(94vw, 420px);
+    gap: clamp(0.3rem, 1.5vw, 0.5rem);
+    aspect-ratio: 1 / 1;
+  }
+
+  .bingo-tile {
+    font-size: clamp(1.15rem, 4.8vw, 1.4rem);
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    aspect-ratio: 1 / 1;
+    border-radius: var(--radius-sm);
+  }
+
+  .bingo-tile:active {
+    transform: scale(0.92);
+  }
+
+  .game-footer {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .bingo-claim-btn {
+    min-height: 52px;
+    font-size: 1.15rem;
+    touch-action: manipulation;
   }
 
   #toastContainer {
     left: 0.8rem;
     right: 0.8rem;
-    bottom: 1rem;
+    bottom: max(1rem, env(safe-area-inset-bottom));
     max-width: 440px;
     margin: 0 auto;
   }
 
   .toast {
-    padding: 0.7rem 1rem;
+    padding: 0.75rem 1rem;
     font-size: 0.85rem;
     text-align: center;
   }
 
-  .modal-card {
-    padding: 1.25rem;
-    max-height: 90vh;
-    overflow-y: auto;
-    width: 94%;
-  }
-
   .challenges-grid, .rooms-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-width: 100%;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    padding: 1.5rem 1.25rem max(1.5rem, env(safe-area-inset-bottom));
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    max-height: 88vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-overlay.active-modal .modal-card {
+    transform: translateY(0);
+  }
+
+  .form-control, input, select, textarea {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
   }
 }
 
@@ -1330,24 +1435,24 @@ body {
   }
 
   .bingo-grid {
-    gap: 0.35rem;
+    gap: 0.3rem;
   }
 
   .bingo-tile {
-    font-size: 1.15rem;
-    border-radius: var(--radius-sm);
-    touch-action: manipulation;
+    font-size: clamp(1rem, 4.4vw, 1.25rem);
+    border-radius: 6px;
   }
 
   .bingo-tile.drawn-unmarked::after {
-    font-size: 0.55rem;
+    font-size: 0.52rem;
+    bottom: 2px;
   }
 
   .logo-top, .logo-bottom {
-    font-size: 1rem;
+    font-size: 0.95rem;
   }
 
   .logo-icon {
-    font-size: 1.4rem;
+    font-size: 1.3rem;
   }
 }

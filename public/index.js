@@ -581,22 +581,30 @@ function initSocket() {
     showToast(data.error || 'Room error occurred', 'error');
   });
 
-  socket.on('admin_clear_cache', (data) => {
-    showToast('⚡ Admin reset system cache memory! Refreshing session...', 'warning');
+  socket.on('admin_clear_cache', async (data) => {
+    showToast('⚡ Admin reset system cache memory & updated app UI! Refreshing session...', 'warning');
     try {
-      localStorage.removeItem('bingo_user_session');
-      localStorage.removeItem('bingo_device_id');
+      localStorage.clear();
       sessionStorage.clear();
-      if ('caches' in window) {
-        caches.keys().then((names) => {
-          names.forEach((name) => caches.delete(name));
-        });
+
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (let registration of registrations) {
+          await registration.unregister();
+        }
       }
-    } catch (e) {}
+
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+    } catch (e) {
+      console.warn('Cache clear error:', e);
+    }
 
     setTimeout(() => {
-      window.location.reload();
-    }, 1200);
+      window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+    }, 1000);
   });
 }
 
