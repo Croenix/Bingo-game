@@ -585,7 +585,13 @@ function initSocket() {
     showToast('⚡ Admin reset system cache memory! Refreshing session...', 'warning');
     try {
       localStorage.removeItem('bingo_user_session');
+      localStorage.removeItem('bingo_device_id');
       sessionStorage.clear();
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
     } catch (e) {}
 
     setTimeout(() => {

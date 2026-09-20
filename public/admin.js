@@ -1407,12 +1407,18 @@
       });
     }
 
-    async function handleClearAllCache() {
+    async function handleClearAllCache(e) {
+      if (e) e.preventDefault();
+
       if (!confirm('Are you sure you want to clear device cache memory & local sessions across ALL user devices globally?')) {
         return;
       }
 
-      const btns = [el.clearAllCacheBtn, el.globalClearCacheBtn, el.usersClearCacheBtn].filter(Boolean);
+      const btn1 = document.getElementById('clearAllCacheBtn');
+      const btn2 = document.getElementById('globalClearCacheBtn');
+      const btn3 = document.getElementById('usersClearCacheBtn');
+      const btns = [btn1, btn2, btn3].filter(Boolean);
+
       btns.forEach(b => { b.disabled = true; });
 
       showToast('Clearing device cache memory across all devices...', 'info');
@@ -1422,18 +1428,24 @@
 
       if (ok) {
         showToast('All device & system cache memory cleared successfully across all users! 🧹', 'success');
-        if (el.cacheClearStatusText) {
+        const statusEl = document.getElementById('cacheClearStatusText');
+        if (statusEl) {
           const nowStr = new Date().toLocaleTimeString();
-          el.cacheClearStatusText.innerHTML = `<i class="fa-regular fa-clock"></i> Last cleared: ${nowStr}`;
+          statusEl.innerHTML = `<i class="fa-regular fa-clock"></i> Last cleared: ${nowStr}`;
         }
       } else {
         showToast((data && data.error) || 'Failed to clear cache memory', 'error');
       }
     }
+    window.handleClearAllCache = handleClearAllCache;
 
-    if (el.clearAllCacheBtn) el.clearAllCacheBtn.addEventListener('click', handleClearAllCache);
-    if (el.globalClearCacheBtn) el.globalClearCacheBtn.addEventListener('click', handleClearAllCache);
-    if (el.usersClearCacheBtn) el.usersClearCacheBtn.addEventListener('click', handleClearAllCache);
+    // Document-level Event Delegation for Clear Cache Buttons
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('#clearAllCacheBtn, #globalClearCacheBtn, #usersClearCacheBtn, .btn-clear-cache');
+      if (btn) {
+        handleClearAllCache(e);
+      }
+    });
 
     if (el.saveImgbbKeyBtn) el.saveImgbbKeyBtn.addEventListener('click', saveServerImgbbKey);
 
