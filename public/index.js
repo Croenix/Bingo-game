@@ -583,6 +583,9 @@ function initSocket() {
       updateTurnStateUI();
       showToast(`${data.player?.name || 'A player'} joined the room!`, 'info');
       SoundFX.playPlayerJoined();
+      if (data.player && data.player.socketId && data.player.socketId !== socket.id) {
+        VoiceChat.connectToPeer(data.player.socketId);
+      }
     }
   });
 
@@ -1161,11 +1164,15 @@ function escapeHtml(str) {
 // ==========================================================================
 // WebRTC In-Room Real-Time Voice Chat System
 // ==========================================================================
+// ==========================================================================
+// WebRTC In-Room Real-Time Voice Chat System (Perfect Negotiation Mesh)
+// ==========================================================================
 const VoiceChat = {
   localStream: null,
   peers: {}, // socketId -> RTCPeerConnection
   remoteAudioElements: {}, // socketId -> <audio>
   iceCandidateQueues: {}, // socketId -> [RTCIceCandidateInit]
+  makingOffer: {}, // socketId -> boolean
   isMicMuted: false,
   isSpeakerMuted: false,
   voiceStates: {}, // userId / socketId -> { isMicMuted, isSpeakerMuted }
@@ -1181,55 +1188,20 @@ const VoiceChat = {
     socket.off('player_left');
 
     socket.on('voice_signal', async (data) => {
-      const { senderSocketId, senderUserId, signalData, type } = data;
-      if (!senderSocketId) return;
+      const { roomId: signalRoomId, senderSocketId, senderUserId, signalData, type } = data;
+      if (!senderSocketId || senderSocketId === socket.id) return;
+      if (signalRoomId && currentRoom && String(signalRoomId).toUpperCase().trim() !== String(currentRoom.roomId).toUpperCase().trim()) {
+        return; // Ignore signals from other rooms
+      }
 
       if (type === 'join') {
-        this.removePeer(senderSocketId);
-        this.createPeerConnection(senderSocketId, true);
+        this.connectToPeer(senderSocketId);
       } else if (type === 'offer') {
-        const pc = this.createPeerConnection(senderSocketId, false);
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(signalData));
-          await this.flushIceCandidates(senderSocketId, pc);
-
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-
-          socket.emit('voice_signal', {
-            roomId: currentRoom ? currentRoom.roomId : '',
-            targetSocketId: senderSocketId,
-            senderUserId: currentUser ? currentUser.userId : null,
-            signalData: answer,
-            type: 'answer'
-          });
-        } catch (err) {
-          console.error('VoiceChat handle offer error:', err);
-        }
+        await this.handleOffer(senderSocketId, signalData);
       } else if (type === 'answer') {
-        const pc = this.peers[senderSocketId];
-        if (pc) {
-          try {
-            await pc.setRemoteDescription(new RTCSessionDescription(signalData));
-            await this.flushIceCandidates(senderSocketId, pc);
-          } catch (err) {
-            console.error('VoiceChat handle answer error:', err);
-          }
-        }
+        await this.handleAnswer(senderSocketId, signalData);
       } else if (type === 'candidate') {
-        const pc = this.peers[senderSocketId];
-        if (pc && pc.remoteDescription) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(signalData));
-          } catch (err) {
-            console.error('VoiceChat add ICE candidate error:', err);
-          }
-        } else {
-          if (!this.iceCandidateQueues[senderSocketId]) {
-            this.iceCandidateQueues[senderSocketId] = [];
-          }
-          this.iceCandidateQueues[senderSocketId].push(signalData);
-        }
+        await this.handleCandidate(senderSocketId, signalData);
       } else if (type === 'leave') {
         this.removePeer(senderSocketId);
         if (senderUserId) {
@@ -1240,7 +1212,10 @@ const VoiceChat = {
     });
 
     socket.on('voice_state_updated', (data) => {
-      const { userId, socketId, isMicMuted, isSpeakerMuted } = data;
+      const { roomId: signalRoomId, userId, socketId, isMicMuted, isSpeakerMuted } = data;
+      if (signalRoomId && currentRoom && String(signalRoomId).toUpperCase().trim() !== String(currentRoom.roomId).toUpperCase().trim()) {
+        return; // Ignore voice state from other rooms
+      }
       this.voiceStates[userId || socketId] = { isMicMuted, isSpeakerMuted };
       renderPlayersStrip();
     });
@@ -1256,7 +1231,14 @@ const VoiceChat = {
     });
 
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: false
+      });
       this.isMicMuted = false;
       this.updateControlsUI();
 
@@ -1275,23 +1257,23 @@ const VoiceChat = {
       this.updateControlsUI();
       this.broadcastState();
     }
-  },
 
-  async flushIceCandidates(socketId, pc) {
-    const queue = this.iceCandidateQueues[socketId];
-    if (queue && queue.length > 0) {
-      while (queue.length > 0) {
-        const cand = queue.shift();
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(cand));
-        } catch (err) {
-          console.warn('Error flushing queued ICE candidate:', err);
+    if (currentRoom && Array.isArray(currentRoom.players)) {
+      currentRoom.players.forEach(p => {
+        if (p.socketId && p.socketId !== socket.id) {
+          this.connectToPeer(p.socketId);
         }
-      }
+      });
     }
   },
 
-  createPeerConnection(targetSocketId, isInitiator) {
+  connectToPeer(targetSocketId) {
+    if (!targetSocketId || targetSocketId === socket.id) return;
+    const pc = this.getOrCreatePeerConnection(targetSocketId);
+    this.makeOffer(targetSocketId, pc);
+  },
+
+  getOrCreatePeerConnection(targetSocketId) {
     if (this.peers[targetSocketId]) {
       const existingPc = this.peers[targetSocketId];
       if (existingPc.connectionState !== 'closed' && existingPc.connectionState !== 'failed') {
@@ -1302,52 +1284,32 @@ const VoiceChat = {
 
     const configuration = {
       iceServers: [
+        // STUN Servers for direct P2P NAT resolution
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:global.stun.twilio.com:3478' },
+        // TURN Servers with verified authentication credentials for cross-network relay (Wi-Fi <-> 4G/5G/CGNAT)
         {
-          urls: 'turn:openrelay.metered.ca:80',
+          urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp',
+            'turns:openrelay.metered.ca:443'
+          ],
           username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
+          credential: 'openrelayproject',
+          credentialType: 'password'
         }
       ],
-      iceCandidatePoolSize: 10
+      iceCandidatePoolSize: 10,
+      iceTransportPolicy: 'all'
     };
 
     const pc = new RTCPeerConnection(configuration);
     this.peers[targetSocketId] = pc;
-
-    if (isInitiator) {
-      pc.onnegotiationneeded = async () => {
-        try {
-          if (pc.signalingState !== 'stable') return;
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          socket.emit('voice_signal', {
-            roomId: currentRoom ? currentRoom.roomId : '',
-            targetSocketId: targetSocketId,
-            senderUserId: currentUser ? currentUser.userId : null,
-            signalData: offer,
-            type: 'offer'
-          });
-        } catch (err) {
-          console.error('VoiceChat createOffer error:', err);
-        }
-      };
-    }
 
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
@@ -1373,11 +1335,20 @@ const VoiceChat = {
         audio = document.createElement('audio');
         audio.autoplay = true;
         audio.setAttribute('playsinline', 'true');
-        audio.style.display = 'none';
+        audio.style.position = 'fixed';
+        audio.style.left = '-9999px';
+        audio.style.top = '-9999px';
+        audio.style.width = '1px';
+        audio.style.height = '1px';
+        audio.style.opacity = '0.01';
         document.body.appendChild(audio);
         this.remoteAudioElements[targetSocketId] = audio;
       }
-      audio.srcObject = event.streams[0];
+      if (event.streams && event.streams[0]) {
+        audio.srcObject = event.streams[0];
+      } else {
+        audio.srcObject = new MediaStream([event.track]);
+      }
       audio.muted = this.isSpeakerMuted;
       audio.play().catch(err => {
         console.warn('Audio play auto-block:', err);
@@ -1385,12 +1356,110 @@ const VoiceChat = {
     };
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed' || pc.iceConnectionState === 'failed') {
+      if (pc.iceConnectionState === 'closed' || pc.iceConnectionState === 'failed') {
         this.removePeer(targetSocketId);
       }
     };
 
     return pc;
+  },
+
+  async makeOffer(targetSocketId, pc) {
+    try {
+      this.makingOffer[targetSocketId] = true;
+      const offer = await pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: false
+      });
+      if (pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      socket.emit('voice_signal', {
+        roomId: currentRoom ? currentRoom.roomId : '',
+        targetSocketId: targetSocketId,
+        senderUserId: currentUser ? currentUser.userId : null,
+        signalData: pc.localDescription,
+        type: 'offer'
+      });
+    } catch (err) {
+      console.error('VoiceChat makeOffer error:', err);
+    } finally {
+      this.makingOffer[targetSocketId] = false;
+    }
+  },
+
+  async handleOffer(senderSocketId, offerData) {
+    const pc = this.getOrCreatePeerConnection(senderSocketId);
+    const isPolite = socket.id < senderSocketId;
+    const offerCollision = this.makingOffer[senderSocketId] || pc.signalingState !== 'stable';
+
+    if (offerCollision) {
+      if (!isPolite) {
+        return;
+      }
+      try {
+        await pc.setLocalDescription({ type: 'rollback' });
+      } catch (e) {}
+    }
+
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(offerData));
+      await this.flushIceCandidates(senderSocketId, pc);
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit('voice_signal', {
+        roomId: currentRoom ? currentRoom.roomId : '',
+        targetSocketId: senderSocketId,
+        senderUserId: currentUser ? currentUser.userId : null,
+        signalData: pc.localDescription,
+        type: 'answer'
+      });
+    } catch (err) {
+      console.error('VoiceChat handle offer error:', err);
+    }
+  },
+
+  async handleAnswer(senderSocketId, answerData) {
+    const pc = this.peers[senderSocketId];
+    if (pc && pc.signalingState === 'have-local-offer') {
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(answerData));
+        await this.flushIceCandidates(senderSocketId, pc);
+      } catch (err) {
+        console.error('VoiceChat handle answer error:', err);
+      }
+    }
+  },
+
+  async handleCandidate(senderSocketId, candidateData) {
+    const pc = this.peers[senderSocketId];
+    if (pc && pc.remoteDescription) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidateData));
+      } catch (err) {
+        console.error('VoiceChat add ICE candidate error:', err);
+      }
+    } else {
+      if (!this.iceCandidateQueues[senderSocketId]) {
+        this.iceCandidateQueues[senderSocketId] = [];
+      }
+      this.iceCandidateQueues[senderSocketId].push(candidateData);
+    }
+  },
+
+  async flushIceCandidates(socketId, pc) {
+    const queue = this.iceCandidateQueues[socketId];
+    if (queue && queue.length > 0) {
+      while (queue.length > 0) {
+        const cand = queue.shift();
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (err) {
+          console.warn('Error flushing queued ICE candidate:', err);
+        }
+      }
+    }
   },
 
   removePeer(socketId) {
@@ -1404,6 +1473,9 @@ const VoiceChat = {
     }
     if (this.iceCandidateQueues[socketId]) {
       delete this.iceCandidateQueues[socketId];
+    }
+    if (this.makingOffer[socketId]) {
+      delete this.makingOffer[socketId];
     }
   },
 
@@ -1509,8 +1581,18 @@ const VoiceChat = {
     this.peers = {};
     this.remoteAudioElements = {};
     this.iceCandidateQueues = {};
+    this.makingOffer = {};
     this.voiceStates = {};
   }
 };
 
 window.VoiceChat = VoiceChat;
+
+// Unlock mobile audio autoplay on first user interaction
+document.addEventListener('click', () => {
+  Object.values(VoiceChat.remoteAudioElements).forEach(audio => {
+    if (audio && audio.paused) {
+      audio.play().catch(() => {});
+    }
+  });
+}, { passive: true });

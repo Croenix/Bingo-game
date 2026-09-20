@@ -702,7 +702,14 @@ function registerRoomHandlers(io, socket) {
       if (!roomId) return;
       const formattedRoomId = String(roomId).toUpperCase().trim();
 
+      // Enforce Room Exclusivity: Sender socket must belong to the specified room
+      if (!socket.rooms.has(formattedRoomId)) {
+        console.warn(`[VoiceChat Security] Unauthorized signal from socket ${socket.id} outside room ${formattedRoomId}`);
+        return;
+      }
+
       const signalDataPayload = {
+        roomId: formattedRoomId,
         senderSocketId: socket.id,
         senderUserId: senderUserId || null,
         signalData,
@@ -710,7 +717,13 @@ function registerRoomHandlers(io, socket) {
       };
 
       if (targetSocketId) {
-        io.to(targetSocketId).emit('voice_signal', signalDataPayload);
+        // Enforce Room Exclusivity: Target socket must also be inside the room
+        const roomSockets = io.sockets.adapter.rooms.get(formattedRoomId);
+        if (roomSockets && roomSockets.has(targetSocketId)) {
+          io.to(targetSocketId).emit('voice_signal', signalDataPayload);
+        } else {
+          console.warn(`[VoiceChat Security] Target socket ${targetSocketId} is not in room ${formattedRoomId}`);
+        }
       } else {
         socket.to(formattedRoomId).emit('voice_signal', signalDataPayload);
       }
@@ -729,7 +742,11 @@ function registerRoomHandlers(io, socket) {
       if (!roomId || !userId) return;
       const formattedRoomId = String(roomId).toUpperCase().trim();
 
+      // Enforce Room Exclusivity: Sender must be inside the room
+      if (!socket.rooms.has(formattedRoomId)) return;
+
       socket.to(formattedRoomId).emit('voice_state_updated', {
+        roomId: formattedRoomId,
         userId,
         socketId: socket.id,
         isMicMuted: Boolean(isMicMuted),
