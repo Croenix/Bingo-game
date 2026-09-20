@@ -614,6 +614,8 @@ function handleRoomJoinedOrCreated(data) {
   updateTurnStateUI();
   renderBingoBoard();
 
+  VoiceChat.initInRoom(currentRoom.roomId);
+
   switchView('gameView');
   closeModal('createRoomModal');
   closeModal('joinRoomModal');
@@ -917,6 +919,7 @@ function confirmLeaveRoom() {
 }
 
 function leaveRoomUI() {
+  VoiceChat.close();
   currentRoom = null;
   roomStatus = 'waiting';
   currentTurnUserId = null;
@@ -935,6 +938,9 @@ function renderPlayersStrip() {
   strip.innerHTML = currentRoom.players.map(p => {
     const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
     const isCreator = p.isCreator || p.userId === currentRoom.creatorId;
+    const isMe = currentUser && currentUser.userId === p.userId;
+    const voiceState = VoiceChat.voiceStates[p.userId] || {};
+    const isMuted = isMe ? VoiceChat.isMicMuted : voiceState.isMicMuted;
 
     return `
       <div class="player-badge ${isCreator ? 'is-creator' : ''} ${isTurn ? 'is-turn' : ''}">
@@ -942,6 +948,7 @@ function renderPlayersStrip() {
         <span>${escapeHtml(p.name)}</span>
         ${isCreator ? '👑' : ''}
         ${isTurn ? ' 🎲' : ''}
+        ${isMuted ? '<span class="voice-badge muted" title="Mic Muted">🔇</span>' : '<span class="voice-badge live" title="Voice Live">🎙️</span>'}
       </div>
     `;
   }).join('');
@@ -1008,3 +1015,261 @@ function escapeHtml(str) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
   }[m]));
 }
+
+// ==========================================================================
+// WebRTC In-Room Real-Time Voice Chat System
+// ==========================================================================
+const VoiceChat = {
+  localStream: null,
+  peers: {}, // socketId -> RTCPeerConnection
+  remoteAudioElements: {}, // socketId -> <audio>
+  isMicMuted: false,
+  isSpeakerMuted: false,
+  voiceStates: {}, // userId / socketId -> { isMicMuted, isSpeakerMuted }
+
+  async initInRoom(roomId) {
+    if (!roomId) return;
+    this.close();
+
+    if (!socket) return;
+
+    socket.off('voice_signal');
+    socket.off('voice_state_updated');
+
+    socket.on('voice_signal', async (data) => {
+      const { senderSocketId, signalData, type } = data;
+      if (type === 'join') {
+        this.createPeerConnection(senderSocketId, true);
+      } else if (type === 'offer') {
+        const pc = this.createPeerConnection(senderSocketId, false);
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(signalData));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit('voice_signal', {
+            roomId: currentRoom ? currentRoom.roomId : '',
+            targetSocketId: senderSocketId,
+            signalData: answer,
+            type: 'answer'
+          });
+        } catch (err) {
+          console.error('VoiceChat handle offer error:', err);
+        }
+      } else if (type === 'answer') {
+        const pc = this.peers[senderSocketId];
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(signalData));
+          } catch (err) {
+            console.error('VoiceChat handle answer error:', err);
+          }
+        }
+      } else if (type === 'candidate') {
+        const pc = this.peers[senderSocketId];
+        if (pc && signalData) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(signalData));
+          } catch (err) {
+            console.error('VoiceChat add ICE candidate error:', err);
+          }
+        }
+      }
+    });
+
+    socket.on('voice_state_updated', (data) => {
+      const { userId, socketId, isMicMuted, isSpeakerMuted } = data;
+      this.voiceStates[userId || socketId] = { isMicMuted, isSpeakerMuted };
+      renderPlayersStrip();
+    });
+
+    try {
+      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      this.isMicMuted = false;
+      this.updateControlsUI();
+
+      socket.emit('voice_signal', {
+        roomId: currentRoom.roomId,
+        type: 'join'
+      });
+
+      showToast('🎙️ Live Voice Chat Connected!', 'success');
+    } catch (err) {
+      console.warn('VoiceChat mic capture error or permission denied:', err);
+      showToast('🎙️ Voice Chat: Mic muted or permission needed. Click Mic ON to activate!', 'info');
+      this.updateControlsUI();
+    }
+  },
+
+  createPeerConnection(targetSocketId, isInitiator) {
+    if (this.peers[targetSocketId]) {
+      return this.peers[targetSocketId];
+    }
+
+    const configuration = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    const pc = new RTCPeerConnection(configuration);
+    this.peers[targetSocketId] = pc;
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        pc.addTrack(track, this.localStream);
+      });
+    }
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('voice_signal', {
+          roomId: currentRoom ? currentRoom.roomId : '',
+          targetSocketId: targetSocketId,
+          signalData: event.candidate,
+          type: 'candidate'
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      let audio = this.remoteAudioElements[targetSocketId];
+      if (!audio) {
+        audio = document.createElement('audio');
+        audio.autoplay = true;
+        audio.style.display = 'none';
+        document.body.appendChild(audio);
+        this.remoteAudioElements[targetSocketId] = audio;
+      }
+      audio.srcObject = event.streams[0];
+      audio.muted = this.isSpeakerMuted;
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
+        this.removePeer(targetSocketId);
+      }
+    };
+
+    if (isInitiator) {
+      pc.onnegotiationneeded = async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit('voice_signal', {
+            roomId: currentRoom ? currentRoom.roomId : '',
+            targetSocketId: targetSocketId,
+            signalData: offer,
+            type: 'offer'
+          });
+        } catch (err) {
+          console.error('VoiceChat createOffer error:', err);
+        }
+      };
+    }
+
+    return pc;
+  },
+
+  removePeer(socketId) {
+    if (this.peers[socketId]) {
+      try { this.peers[socketId].close(); } catch (e) {}
+      delete this.peers[socketId];
+    }
+    if (this.remoteAudioElements[socketId]) {
+      try { this.remoteAudioElements[socketId].remove(); } catch (e) {}
+      delete this.remoteAudioElements[socketId];
+    }
+  },
+
+  async toggleMic() {
+    if (!this.localStream) {
+      if (currentRoom) {
+        await this.initInRoom(currentRoom.roomId);
+      }
+      return;
+    }
+
+    this.isMicMuted = !this.isMicMuted;
+    this.localStream.getAudioTracks().forEach(track => {
+      track.enabled = !this.isMicMuted;
+    });
+
+    this.updateControlsUI();
+    this.broadcastState();
+    renderPlayersStrip();
+
+    showToast(this.isMicMuted ? '🎙️ Microphone Muted 🔇' : '🎙️ Microphone Unmuted 🎙️', 'info');
+  },
+
+  toggleSpeaker() {
+    this.isSpeakerMuted = !this.isSpeakerMuted;
+
+    Object.values(this.remoteAudioElements).forEach(audio => {
+      if (audio) audio.muted = this.isSpeakerMuted;
+    });
+
+    this.updateControlsUI();
+    this.broadcastState();
+
+    showToast(this.isSpeakerMuted ? '🔊 Room Audio Muted 🔇' : '🔊 Room Audio Enabled 🔊', 'info');
+  },
+
+  broadcastState() {
+    if (socket && currentUser && currentRoom) {
+      socket.emit('voice_state_change', {
+        roomId: currentRoom.roomId,
+        userId: currentUser.userId,
+        isMicMuted: this.isMicMuted,
+        isSpeakerMuted: this.isSpeakerMuted
+      });
+    }
+  },
+
+  updateControlsUI() {
+    const micBtn = document.getElementById('micToggleBtn');
+    const micIcon = document.getElementById('micIcon');
+    const micLabel = document.getElementById('micLabel');
+
+    const speakerBtn = document.getElementById('speakerToggleBtn');
+    const speakerIcon = document.getElementById('speakerIcon');
+    const speakerLabel = document.getElementById('speakerLabel');
+
+    if (micBtn && micIcon && micLabel) {
+      if (this.isMicMuted || !this.localStream) {
+        micBtn.classList.add('muted');
+        micIcon.textContent = '🔇';
+        micLabel.textContent = 'Mic OFF';
+      } else {
+        micBtn.classList.remove('muted');
+        micIcon.textContent = '🎙️';
+        micLabel.textContent = 'Mic ON';
+      }
+    }
+
+    if (speakerBtn && speakerIcon && speakerLabel) {
+      if (this.isSpeakerMuted) {
+        speakerBtn.classList.add('muted');
+        speakerIcon.textContent = '🔇';
+        speakerLabel.textContent = 'Audio OFF';
+      } else {
+        speakerBtn.classList.remove('muted');
+        speakerIcon.textContent = '🔊';
+        speakerLabel.textContent = 'Audio ON';
+      }
+    }
+  },
+
+  close() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream = null;
+    }
+    Object.keys(this.peers).forEach(id => this.removePeer(id));
+    this.peers = {};
+    this.remoteAudioElements = {};
+    this.voiceStates = {};
+  }
+};
+
+window.VoiceChat = VoiceChat;

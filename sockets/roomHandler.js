@@ -570,6 +570,55 @@ function registerRoomHandlers(io, socket) {
   });
 
   /**
+   * Event: voice_signal (Relay WebRTC audio offers, answers, ICE candidates)
+   * Payload: { roomId, targetSocketId, signalData, type }
+   */
+  socket.on('voice_signal', (payload = {}) => {
+    try {
+      const { roomId, targetSocketId, signalData, type } = payload;
+      if (!roomId) return;
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('voice_signal', {
+          senderSocketId: socket.id,
+          signalData,
+          type
+        });
+      } else {
+        socket.to(formattedRoomId).emit('voice_signal', {
+          senderSocketId: socket.id,
+          signalData,
+          type
+        });
+      }
+    } catch (err) {
+      console.error('Socket voice_signal error:', err);
+    }
+  });
+
+  /**
+   * Event: voice_state_change (Broadcast Mic / Speaker state to room roster)
+   * Payload: { roomId, userId, isMicMuted, isSpeakerMuted }
+   */
+  socket.on('voice_state_change', (payload = {}) => {
+    try {
+      const { roomId, userId, isMicMuted, isSpeakerMuted } = payload;
+      if (!roomId || !userId) return;
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+
+      socket.to(formattedRoomId).emit('voice_state_updated', {
+        userId,
+        socketId: socket.id,
+        isMicMuted: Boolean(isMicMuted),
+        isSpeakerMuted: Boolean(isSpeakerMuted)
+      });
+    } catch (err) {
+      console.error('Socket voice_state_change error:', err);
+    }
+  });
+
+  /**
    * Event: disconnect
    */
   socket.on('disconnect', async () => {

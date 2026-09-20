@@ -121,6 +121,16 @@
           </div>
 
           <div class="game-actions">
+            <!-- Real-Time Voice Chat Controls -->
+            <div class="voice-controls-bar">
+              <button id="micToggleBtn" class="btn btn-voice" onclick="VoiceChat.toggleMic()" title="Toggle Mic">
+                <span id="micIcon">🎙️</span> <span id="micLabel">Mic ON</span>
+              </button>
+              <button id="speakerToggleBtn" class="btn btn-voice" onclick="VoiceChat.toggleSpeaker()" title="Toggle Speaker Audio">
+                <span id="speakerIcon">🔊</span> <span id="speakerLabel">Audio ON</span>
+              </button>
+            </div>
+
             <button id="hostStartBtn" class="btn btn-primary btn-sm glow-effect" style="display: none;" onclick="handleHostStartGame()">
               ▶️ START GAME
             </button>
