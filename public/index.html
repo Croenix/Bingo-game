@@ -363,8 +363,13 @@
   <!-- Socket.io Library -->
   <script src="/socket.io/socket.io.js"></script>
 
-  <!-- Agora RTC Web SDK -->
-  <script src="https://download.agora.io/sdk/web/AgoraRTC_N-4.20.0.js"></script>
+  <!-- Agora RTC Web SDK (Local server bundle with CDN fallback) -->
+  <script src="/vendor/agora/AgoraRTC_N-production.js"></script>
+  <script>
+    if (typeof AgoraRTC === 'undefined') {
+      document.write('<script src="https://download.agora.io/sdk/web/AgoraRTC_N-4.20.0.js"><\/script>');
+    }
+  </script>
 
   <!-- Game Logic Script -->
   <script src="/index.js?v=2.0.0"></script>

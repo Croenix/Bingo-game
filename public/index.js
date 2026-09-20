@@ -1180,8 +1180,15 @@ const VoiceChat = {
     await this.close();
 
     if (typeof AgoraRTC === 'undefined') {
-      console.warn('AgoraRTC SDK is not available');
-      return;
+      let attempts = 0;
+      while (typeof AgoraRTC === 'undefined' && attempts < 20) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
+      }
+      if (typeof AgoraRTC === 'undefined') {
+        console.warn('AgoraRTC SDK is not available');
+        return;
+      }
     }
 
     // 1. Initialize Agora RTC Client with mode "rtc" and codec "vp8"

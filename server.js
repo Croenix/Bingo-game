@@ -34,6 +34,10 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use('/vendor/agora', express.static(path.join(__dirname, 'node_modules', 'agora-rtc-sdk-ng')));
+
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: 0,
   etag: true,
