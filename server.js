@@ -59,6 +59,51 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/api/turn-config', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const coturnHost = String(process.env.COTURN_HOST || process.env.COTURN_PUBLIC_IP || '').trim();
+  const coturnPort = Number(process.env.COTURN_PORT || 3478);
+  const coturnUser = String(process.env.COTURN_USERNAME || 'gameuser').trim();
+  const coturnPass = String(process.env.COTURN_PASSWORD || 'gamepassword123').trim();
+
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
+  ];
+
+  if (coturnHost) {
+    iceServers.push({
+      urls: [
+        `turn:${coturnHost}:${coturnPort}?transport=udp`,
+        `turn:${coturnHost}:${coturnPort}?transport=tcp`
+      ],
+      username: coturnUser,
+      credential: coturnPass,
+      credentialType: 'password'
+    });
+  } else {
+    iceServers.push({
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+        'turns:openrelay.metered.ca:443'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+      credentialType: 'password'
+    });
+  }
+
+  res.json({
+    ok: true,
+    iceServers
+  });
+});
+
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/challenges', challengeRoutes);

@@ -1176,12 +1176,45 @@ const VoiceChat = {
   isMicMuted: false,
   isSpeakerMuted: false,
   voiceStates: {}, // userId / socketId -> { isMicMuted, isSpeakerMuted }
+  iceServersConfig: null,
+
+  async fetchIceServers() {
+    try {
+      const res = await fetch('/api/turn-config');
+      const data = await res.json();
+      if (data && Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+        this.iceServersConfig = data.iceServers;
+        return;
+      }
+    } catch (e) {
+      console.warn('[VoiceChat] Failed to fetch /api/turn-config, using fallback:', e);
+    }
+    this.iceServersConfig = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:443'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+        credentialType: 'password'
+      }
+    ];
+  },
 
   async initInRoom(roomId) {
     if (!roomId) return;
     this.close();
 
     if (!socket) return;
+    await this.fetchIceServers();
 
     socket.off('voice_signal');
     socket.off('voice_state_updated');
@@ -1282,28 +1315,27 @@ const VoiceChat = {
       this.removePeer(targetSocketId);
     }
 
+    const defaultServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp',
+          'turns:openrelay.metered.ca:443'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject',
+        credentialType: 'password'
+      }
+    ];
+
     const configuration = {
-      iceServers: [
-        // STUN Servers for direct P2P NAT resolution
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        // TURN Servers with verified authentication credentials for cross-network relay (Wi-Fi <-> 4G/5G/CGNAT)
-        {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp',
-            'turns:openrelay.metered.ca:443'
-          ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject',
-          credentialType: 'password'
-        }
-      ],
+      iceServers: (this.iceServersConfig && this.iceServersConfig.length > 0) ? this.iceServersConfig : defaultServers,
       iceCandidatePoolSize: 10,
       iceTransportPolicy: 'all'
     };
