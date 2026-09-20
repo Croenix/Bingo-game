@@ -354,7 +354,7 @@ function registerRoomHandlers(io, socket) {
       }
 
       const num = Number(number);
-      if (isNaN(num) || num < 1 || num > 25) {
+      if (isNaN(num) || num < 1 || num > 75) {
         return sendError('pick_number', 'Invalid number picked');
       }
 

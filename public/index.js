@@ -306,10 +306,13 @@ function initSocket() {
     document.getElementById('drawnBallNumber').textContent = number;
     document.getElementById('drawnBallPicker').textContent = `by ${pickedBy}`;
 
-    // Mark number on board
+    // Add to set of picked/drawn numbers across the room
     pickedNumbersSet.add(number);
+
+    // Auto-mark ONLY for the player who picked the number on their turn
+    const isPicker = currentUser && currentUser.userId === pickedByUserId;
     const tileIdx = myBingoCard.indexOf(number);
-    if (tileIdx !== -1) {
+    if (isPicker && tileIdx !== -1) {
       markedIndexes.add(tileIdx);
     }
 
@@ -323,8 +326,14 @@ function initSocket() {
     const isMyTurnNow = currentUser && currentUser.userId === currentTurnUserId;
     if (isMyTurnNow) {
       showToast(`🎯 Number ${number} picked! IT IS YOUR TURN NOW! 🔥`, 'success');
+    } else if (isPicker) {
+      showToast(`🎯 You picked ${number}! Next turn: ${nextTurnName}`, 'info');
     } else {
-      showToast(`🎯 ${pickedBy} picked ${number}. ${nextTurnName}'s turn!`, 'info');
+      if (tileIdx !== -1 && !markedIndexes.has(tileIdx)) {
+        showToast(`🎯 ${pickedBy} picked ${number}! Click ${number} on your board to mark it!`, 'warning');
+      } else {
+        showToast(`🎯 ${pickedBy} picked ${number}. ${nextTurnName}'s turn!`, 'info');
+      }
     }
   });
 
@@ -370,8 +379,6 @@ function handleRoomJoinedOrCreated(data) {
   if (Array.isArray(gameData.pickedNumbers)) {
     gameData.pickedNumbers.forEach(n => {
       pickedNumbersSet.add(n);
-      const idx = myBingoCard.indexOf(n);
-      if (idx !== -1) markedIndexes.add(idx);
     });
   }
 
@@ -430,9 +437,19 @@ function renderBingoBoard() {
   myBingoCard.forEach((num, index) => {
     const tile = document.createElement('div');
     const isMarked = markedIndexes.has(index);
-    const isDisabled = !isPlaying || !isMyTurn || isMarked;
+    const isDrawnUnmarked = !isMarked && pickedNumbersSet.has(num);
+    const isDisabled = !isPlaying || (!isMyTurn && !isDrawnUnmarked && !isMarked);
 
-    tile.className = 'bingo-tile' + (isMarked ? ' marked' : '') + (isDisabled && !isMarked ? ' disabled-tile' : '');
+    let tileClasses = 'bingo-tile';
+    if (isMarked) {
+      tileClasses += ' marked';
+    } else if (isDrawnUnmarked) {
+      tileClasses += ' drawn-unmarked';
+    } else if (isDisabled) {
+      tileClasses += ' disabled-tile';
+    }
+
+    tile.className = tileClasses;
     tile.textContent = num;
     tile.onclick = () => handleTileClick(index, num);
     grid.appendChild(tile);
@@ -445,14 +462,26 @@ function handleTileClick(index, num) {
     return;
   }
 
-  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
-  if (!isMyTurn) {
-    showToast(`It's not your turn! Waiting for ${currentTurnName || 'other player'}...`, 'error');
+  // 1. Check if tile is already marked
+  if (markedIndexes.has(index)) {
+    showToast(`Number ${num} is already marked on your board!`, 'info');
     return;
   }
 
-  if (markedIndexes.has(index) || pickedNumbersSet.has(num)) {
-    showToast(`Number ${num} is already marked!`, 'info');
+  // 2. Check if this number has already been drawn/picked by anyone in the room
+  if (pickedNumbersSet.has(num)) {
+    // Manually mark drawn tile on player's board
+    markedIndexes.add(index);
+    renderBingoBoard();
+    checkCompletedLines();
+    showToast(`Marked ${num} on your Bingo board! ✅`, 'success');
+    return;
+  }
+
+  // 3. For un-drawn numbers, check if it's currently this player's turn to pick
+  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+  if (!isMyTurn) {
+    showToast(`It's not your turn to pick a new number! Waiting for ${currentTurnName || 'other player'}...`, 'error');
     return;
   }
 

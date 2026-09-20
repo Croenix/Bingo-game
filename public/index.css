@@ -639,6 +639,30 @@ body {
   color: #fff;
 }
 
+.bingo-tile.drawn-unmarked {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.35), rgba(217, 119, 6, 0.45));
+  border: 2px solid var(--gold);
+  color: #ffffff;
+  box-shadow: 0 0 16px var(--gold-glow);
+  animation: drawnTilePulse 1.2s infinite alternate;
+  cursor: pointer;
+}
+
+.bingo-tile.drawn-unmarked::after {
+  content: 'TAP!';
+  position: absolute;
+  bottom: 3px;
+  font-size: 0.6rem;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 0.5px;
+}
+
+@keyframes drawnTilePulse {
+  from { transform: scale(1); border-color: var(--gold); }
+  to { transform: scale(1.06); border-color: #fef08a; box-shadow: 0 0 22px var(--gold); }
+}
+
 /* Game Footer Controls */
 .game-footer {
   display: flex;
