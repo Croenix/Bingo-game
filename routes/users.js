@@ -28,7 +28,7 @@ router.post('/', async (req, res, next) => {
     let gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
     const inputName = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
-    const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : inputName;
+    const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : undefined;
     const profileImageUrl = req.body.profileImageUrl !== undefined ? String(req.body.profileImageUrl).trim() : undefined;
 
     if (!deviceId) {
@@ -59,13 +59,12 @@ router.post('/', async (req, res, next) => {
     }
 
     if (user) {
-      // Existing user update
+      // Existing user: Preserve existing username and name permanently unless explicitly updated
+      user.deviceId = deviceId;
+
       if (inputName !== undefined && inputName.length > 0 && inputName.toLowerCase() !== 'player') {
         user.name = inputName;
-      } else if (!user.name || user.name.toLowerCase() === 'player') {
-        user.name = await generateUniqueUsername(User);
       }
-      user.deviceId = deviceId;
 
       if (profileImageUrl && profileImageUrl.length > 0) {
         user.profileImageUrl = profileImageUrl;
@@ -78,15 +77,20 @@ router.post('/', async (req, res, next) => {
         user.userId = await generateUniqueUserId(User);
       }
 
-      // Backfill or update username if requested/missing
+      // Backfill username if missing
       if (!user.username || user.username.toLowerCase() === 'player') {
-        user.username = await generateUniqueUsername(User, user.name);
-      } else if (req.body.username !== undefined && requestedUsername !== user.username) {
+        user.username = await generateUniqueUsername(User, user.name || 'Player');
+      } else if (requestedUsername !== undefined && requestedUsername.length > 0 && requestedUsername !== user.username) {
         const usernameTaken = await User.findOne({ username: requestedUsername, _id: { $ne: user._id } });
         if (usernameTaken) {
           return res.status(409).json({ error: 'Username is already taken by another user' });
         }
         user.username = requestedUsername;
+      }
+
+      // Backfill name if missing
+      if (!user.name || user.name.toLowerCase() === 'player') {
+        user.name = user.username;
       }
 
       await user.save();

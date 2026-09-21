@@ -3,14 +3,17 @@
    ========================================================================== */
 
 // Global Cache Data ID & Version Control
-const BINGO_CACHE_VERSION = 'v2_2026_09_20';
+const BINGO_CACHE_VERSION = 'v2_2026_09_21';
 (function autoPurgeLegacyCache() {
   try {
+    // Strictly purge any stored user session JSON from localStorage (only deviceId is retained)
+    localStorage.removeItem('bingo_v2_user_session');
+    localStorage.removeItem('bingo_user_session');
+
     const activeVersion = localStorage.getItem('bingo_cache_version');
     if (activeVersion !== BINGO_CACHE_VERSION) {
       console.log('🔄 New Cache Data Version detected (' + BINGO_CACHE_VERSION + '). Declining legacy cache IDs...');
-      // Discard all legacy cache data keys
-      const legacyKeys = ['bingo_user_session', 'bingo_device_id', 'bingo_admin_token', 'bingo_admin_email', 'imgbb_api_key'];
+      const legacyKeys = ['bingo_user_session', 'bingo_admin_token', 'bingo_admin_email', 'imgbb_api_key'];
       legacyKeys.forEach(k => localStorage.removeItem(k));
       sessionStorage.clear();
       localStorage.setItem('bingo_cache_version', BINGO_CACHE_VERSION);
@@ -270,24 +273,28 @@ function getDeviceId() {
 }
 
 function checkSavedSession() {
-  const savedUserJson = localStorage.getItem('bingo_v2_user_session');
-  if (savedUserJson) {
-    try {
-      const savedUser = JSON.parse(savedUserJson);
-      if (savedUser && savedUser.gmailId) {
-        // Silent re-auth with backend
-        loginUser({
-          gmailId: savedUser.gmailId,
-          name: savedUser.name,
-          deviceId: getDeviceId()
-        }, true);
-        return;
+  // Purge any user session JSON stored in localStorage
+  localStorage.removeItem('bingo_v2_user_session');
+  localStorage.removeItem('bingo_user_session');
+
+  const deviceId = getDeviceId();
+  fetch(`/api/users/device/${encodeURIComponent(deviceId)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.ok && data.user) {
+        currentUser = data.user;
+        updateUserNavUI();
+        closeModal('authModal');
+        console.log('✅ User session successfully fetched from MongoDB for deviceId:', deviceId);
+      } else {
+        // Device not yet registered in MongoDB: Create initial MongoDB account for this device
+        loginUser({ deviceId }, true);
       }
-    } catch (e) {
-      console.error('Failed to parse saved session:', e);
-    }
-  }
-  openModal('authModal');
+    })
+    .catch(err => {
+      console.warn('MongoDB device lookup failed, trying auto-registration:', err);
+      loginUser({ deviceId }, true);
+    });
 }
 
 // ==========================================================================
@@ -311,7 +318,7 @@ async function loginUser(payload, silent = false) {
     }
 
     currentUser = data.user;
-    localStorage.setItem('bingo_v2_user_session', JSON.stringify(currentUser));
+    // Store in-memory only (DO NOT save user object to localStorage)
     updateUserNavUI();
     closeModal('authModal');
 
@@ -689,7 +696,6 @@ function initSocket() {
     if (!currentUser) return;
     if (data.coins !== undefined) currentUser.coins = data.coins;
     if (data.gems !== undefined) currentUser.gems = data.gems;
-    localStorage.setItem('bingo_v2_user_session', JSON.stringify(currentUser));
     updateUserNavUI();
 
     if (data.reason) {
