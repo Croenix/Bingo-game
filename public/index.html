@@ -210,8 +210,8 @@
           </div>
 
           <div class="form-group">
-            <label for="authName">Player Name (Optional)</label>
-            <input type="text" id="authName" class="form-control" placeholder="Leave blank for random gaming name" />
+            <label for="authUsername">Gaming Username *</label>
+            <input type="text" id="authUsername" class="form-control" placeholder="Enter your gaming username" required minlength="3" />
           </div>
 
           <div class="form-group">
@@ -220,17 +220,9 @@
           </div>
 
           <button type="submit" class="btn btn-primary btn-block btn-lg glow-effect mt-4" id="authSubmitBtn">
-            🚀 Play Now
+            🚀 Login / Register
           </button>
         </form>
-
-        <div class="auth-divider">
-          <span>OR</span>
-        </div>
-
-        <button type="button" class="btn btn-secondary btn-block" onclick="handleGuestLogin()">
-          ⚡ Quick Guest Play
-        </button>
       </div>
     </div>
 

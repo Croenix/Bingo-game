@@ -27,143 +27,102 @@ router.post('/', async (req, res, next) => {
   try {
     let gmailId = String(req.body.gmailId || '').trim().toLowerCase();
     const deviceId = String(req.body.deviceId || '').trim();
-    const inputName = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
-    const requestedUsername = req.body.username !== undefined ? String(req.body.username).trim() : undefined;
+    const requestedUsername = String(req.body.username || req.body.name || '').trim();
     const profileImageUrl = req.body.profileImageUrl !== undefined ? String(req.body.profileImageUrl).trim() : undefined;
 
     if (!deviceId) {
       return res.status(400).json({ error: 'deviceId is required' });
     }
 
-    // 1. Device-first lookup: Ensure each physical device gets its own unique account
-    let user = await User.findOne({ deviceId });
-
-    if (!user && gmailId) {
-      // 2. Check if gmailId is already bound to another device or is generic
-      const existingGmailUser = await User.findOne({ gmailId });
-      if (existingGmailUser) {
-        if (existingGmailUser.deviceId === deviceId) {
-          user = existingGmailUser;
-        } else {
-          // gmailId is bound to a different device or is generic (e.g. player@gmail.com)
-          // Generate a unique device-specific gmailId for this new device account
-          const cleanDevId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-12) || Date.now();
-          gmailId = `player_${cleanDevId}@gmail.com`;
-        }
-      }
+    // Require BOTH Gmail ID and Username to authenticate or register
+    if (!gmailId || !requestedUsername) {
+      return res.status(400).json({ error: 'Both Gmail Address and Gaming Username are required to log in or register' });
     }
 
-    if (!gmailId || !/^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(gmailId)) {
-      const cleanDevId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-12) || Date.now();
-      gmailId = `player_${cleanDevId}@gmail.com`;
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(gmailId)) {
+      return res.status(400).json({ error: 'Please enter a valid email address' });
     }
+
+    if (requestedUsername.length < 3) {
+      return res.status(400).json({ error: 'Gaming Username must be at least 3 characters long' });
+    }
+
+    const escapedUsername = requestedUsername.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // 1. Search for existing user account by Gmail ID or Username in MongoDB
+    let user = await User.findOne({
+      $or: [
+        { gmailId: gmailId },
+        { username: new RegExp(`^${escapedUsername}$`, 'i') },
+        { name: new RegExp(`^${escapedUsername}$`, 'i') }
+      ]
+    });
 
     if (user) {
-      // Existing user: Preserve existing username and name permanently unless explicitly updated
-      user.deviceId = deviceId;
+      // 2. Existing user record found
+      const userGmail = (user.gmailId || '').toLowerCase();
+      const currentUserName = (user.username || user.name || '').toLowerCase();
+      const inputUserName = requestedUsername.toLowerCase();
 
-      if (inputName !== undefined && inputName.length > 0 && inputName.toLowerCase() !== 'player') {
-        user.name = inputName;
+      if (userGmail !== gmailId) {
+        // Username belongs to a different Gmail account!
+        return res.status(409).json({ error: 'This Username is already taken by another registered account' });
       }
 
+      if (currentUserName !== inputUserName) {
+        // Gmail matches but username does not match registered username
+        return res.status(401).json({ error: `Incorrect Username for ${gmailId}. Registered username is "${user.username || user.name}".` });
+      }
+
+      // Credentials matched! Update deviceId and optional profile avatar
+      user.deviceId = deviceId;
       if (profileImageUrl && profileImageUrl.length > 0) {
         user.profileImageUrl = profileImageUrl;
-      } else if (!user.profileImageUrl) {
-        user.profileImageUrl = generateDefaultAvatar(user.userId);
       }
 
-      // Backfill userId if missing
+      // Backfill missing fields if any
       if (!user.userId) {
         user.userId = await generateUniqueUserId(User);
       }
-
-      // Backfill username if missing
-      if (!user.username || user.username.toLowerCase() === 'player') {
-        user.username = await generateUniqueUsername(User, user.name || 'Player');
-      } else if (requestedUsername !== undefined && requestedUsername.length > 0 && requestedUsername !== user.username) {
-        const usernameTaken = await User.findOne({ username: requestedUsername, _id: { $ne: user._id } });
-        if (usernameTaken) {
-          return res.status(409).json({ error: 'Username is already taken by another user' });
-        }
+      if (!user.username) {
         user.username = requestedUsername;
       }
-
-      // Backfill name if missing
-      if (!user.name || user.name.toLowerCase() === 'player') {
+      if (!user.name) {
         user.name = user.username;
       }
 
       await user.save();
     } else {
-      // New user creation with collision retry loop
-      let saved = false;
-      let attempts = 0;
+      // 3. New User Registration: Create new account in MongoDB with exact Gmail ID and Username
+      const newUserId = await generateUniqueUserId(User);
+      const defaultAvatar = profileImageUrl || generateDefaultAvatar(newUserId);
+      const initialCoins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
 
-      const rawName = (inputName || req.body.username || '').trim();
-      const isGenericOrMissing = !rawName || rawName.toLowerCase() === 'player';
-
-      while (!saved && attempts < 5) {
-        attempts++;
-        try {
-          const newUserId = await generateUniqueUserId(User);
-
-          let finalName;
-          let candidateUsername;
-
-          if (isGenericOrMissing) {
-            const randomPlayerName = await generateUniqueUsername(User);
-            finalName = randomPlayerName;
-            candidateUsername = randomPlayerName;
-          } else {
-            finalName = rawName;
-            candidateUsername = rawName;
-          }
-
-          const newUsername = await generateUniqueUsername(User, candidateUsername);
-          const defaultAvatar = profileImageUrl || generateDefaultAvatar(newUserId);
-          const initialCoins = req.body.coins !== undefined ? Math.max(Number(req.body.coins) || 0, 0) : 1000;
-
-          user = new User({
-            userId: newUserId,
-            username: newUsername,
-            name: finalName,
-            gmailId,
-            deviceId,
-            profileImageUrl: defaultAvatar,
-            coins: initialCoins,
-            gems: 0
-          });
-          await user.save();
-          saved = true;
-        } catch (saveErr) {
-          if (saveErr.code === 11000 && saveErr.keyPattern) {
-            if (saveErr.keyPattern.gmailId) {
-              const cleanDevId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-8);
-              gmailId = `player_${cleanDevId}_${Date.now()}@gmail.com`;
-              continue;
-            }
-            if (saveErr.keyPattern.userId || saveErr.keyPattern.username) {
-              continue; // Retry with a newly generated username/userId
-            }
-          }
-          throw saveErr;
-        }
-      }
+      user = new User({
+        userId: newUserId,
+        username: requestedUsername,
+        name: requestedUsername,
+        gmailId: gmailId,
+        deviceId: deviceId,
+        profileImageUrl: defaultAvatar,
+        coins: initialCoins,
+        gems: 0
+      });
+      await user.save();
     }
 
     const safeUser = user.toObject();
     delete safeUser.__v;
 
-    res.json({ message: 'User saved', user: safeUser });
+    res.json({ message: 'Authentication successful', user: safeUser });
   } catch (e) {
     if (e.code === 11000) {
-      if (e.keyPattern && e.keyPattern.deviceId) {
-        return res.status(409).json({ error: 'Device ID is already registered to another account' });
-      }
       if (e.keyPattern && e.keyPattern.username) {
-        return res.status(409).json({ error: 'Username is already taken' });
+        return res.status(409).json({ error: 'Username is already taken by another account' });
       }
-      return res.status(409).json({ error: 'Gmail ID, User ID, Username, or Device ID already exists' });
+      if (e.keyPattern && e.keyPattern.gmailId) {
+        return res.status(409).json({ error: 'Gmail address is already registered' });
+      }
     }
     next(e);
   }

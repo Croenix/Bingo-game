@@ -273,7 +273,6 @@ function getDeviceId() {
 }
 
 function checkSavedSession() {
-  // Purge any user session JSON stored in localStorage
   localStorage.removeItem('bingo_v2_user_session');
   localStorage.removeItem('bingo_user_session');
 
@@ -285,15 +284,13 @@ function checkSavedSession() {
         currentUser = data.user;
         updateUserNavUI();
         closeModal('authModal');
-        console.log('✅ User session successfully fetched from MongoDB for deviceId:', deviceId);
+        console.log('✅ User session restored for deviceId:', deviceId);
       } else {
-        // Device not yet registered in MongoDB: Create initial MongoDB account for this device
-        loginUser({ deviceId }, true);
+        openModal('authModal');
       }
     })
-    .catch(err => {
-      console.warn('MongoDB device lookup failed, trying auto-registration:', err);
-      loginUser({ deviceId }, true);
+    .catch(() => {
+      openModal('authModal');
     });
 }
 
@@ -318,43 +315,38 @@ async function loginUser(payload, silent = false) {
     }
 
     currentUser = data.user;
-    // Store in-memory only (DO NOT save user object to localStorage)
     updateUserNavUI();
     closeModal('authModal');
 
     if (!silent) {
-      showToast(`Welcome, ${currentUser.name}! 👋`, 'success');
+      showToast(`Welcome, ${currentUser.username || currentUser.name}! 👋`, 'success');
     }
   } catch (err) {
     console.error('Login error:', err);
     if (!silent) {
       showToast(err.message, 'error');
-    } else {
-      openModal('authModal');
     }
+    openModal('authModal');
   }
 }
 
 function handleAuthSubmit(event) {
   event.preventDefault();
   const gmailId = document.getElementById('authGmail').value.trim();
-  const name = document.getElementById('authName').value.trim();
+  const usernameEl = document.getElementById('authUsername');
+  const username = usernameEl ? usernameEl.value.trim() : '';
   const password = document.getElementById('authPassword').value.trim();
 
   if (!gmailId) {
     showToast('Please enter a valid Gmail address', 'error');
     return;
   }
+  if (!username) {
+    showToast('Please enter your Gaming Username', 'error');
+    return;
+  }
 
-  loginUser({ gmailId, name, password });
-}
-
-function handleGuestLogin() {
-  const deviceId = getDeviceId();
-  const cleanId = deviceId.replace(/[^a-zA-Z0-9]/g, '').slice(-8);
-  const guestGmail = `guest_${cleanId}@gmail.com`;
-
-  loginUser({ gmailId: guestGmail });
+  loginUser({ gmailId, username, password });
 }
 
 function handleLogout() {
@@ -1119,7 +1111,12 @@ function openModal(modalId) {
 }
 
 function closeModal(modalId) {
-  document.getElementById(modalId).classList.remove('active-modal');
+  if (modalId === 'authModal' && !currentUser) {
+    // Prevent unauthenticated users from closing the authentication modal
+    return;
+  }
+  const modal = document.getElementById(modalId);
+  if (modal) modal.classList.remove('active-modal');
 }
 
 function openProfileModal() {
