@@ -936,6 +936,7 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
   display: flex;
@@ -946,6 +947,8 @@ body {
   opacity: 0;
   visibility: hidden;
   transition: all 0.25s ease;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .modal-overlay.active-modal {
@@ -963,6 +966,24 @@ body {
   box-shadow: var(--shadow-main);
   transform: scale(0.92);
   transition: transform 0.25s ease;
+  max-height: 85vh;
+  max-height: 85dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-card form {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-card .btn-block,
+.modal-card button[type="submit"],
+.modal-card .modal-footer {
+  margin-bottom: 1rem;
 }
 
 .modal-overlay.active-modal .modal-card {
@@ -1468,12 +1489,23 @@ body {
     border-bottom-right-radius: 0;
     border-top-left-radius: 24px;
     border-top-right-radius: 24px;
-    padding: 1.5rem 1.25rem max(1.5rem, env(safe-area-inset-bottom));
+    padding: 1.5rem 1.25rem calc(3rem + env(safe-area-inset-bottom, 0px));
     transform: translateY(100%);
     transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-    max-height: 88vh;
+    max-height: 85vh;
+    max-height: 85dvh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-card form {
+    padding-bottom: 1.25rem;
+  }
+
+  .modal-card .btn-block,
+  .modal-card button[type="submit"],
+  .modal-card .modal-footer {
+    margin-bottom: 2rem;
   }
 
   .modal-overlay.active-modal .modal-card {
