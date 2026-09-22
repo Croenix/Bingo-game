@@ -35,6 +35,7 @@ let completedLinesCount = 0;
 let roomStatus = 'waiting'; // 'waiting', 'playing', 'finished'
 let currentTurnUserId = null;
 let currentTurnName = '';
+let selectedSOSLetter = 'S';
 
 // ==========================================================================
 // Web Audio API Synthesizer - Premium Sound Effects System
@@ -528,21 +529,29 @@ async function fetchRooms() {
       return;
     }
 
-    container.innerHTML = rooms.map(r => `
-      <div class="room-card">
-        <div class="room-card-header">
-          <span class="room-card-title">${escapeHtml(r.name)}</span>
-          <span class="room-card-code">${escapeHtml(r.roomId)}</span>
+    container.innerHTML = rooms.map(r => {
+      const isSOS = r.gameType === 'sos';
+      const gameBadge = isSOS
+        ? `<span class="badge-game-type badge-sos">🔤 SOS (${r.boardSize || 5}x${r.boardSize || 5})</span>`
+        : `<span class="badge-game-type badge-bingo">🎲 BINGO</span>`;
+
+      return `
+        <div class="room-card">
+          <div class="room-card-header">
+            <span class="room-card-title">${escapeHtml(r.name)}</span>
+            <span class="room-card-code">${escapeHtml(r.roomId)}</span>
+          </div>
+          <div class="room-card-body">
+            ${gameBadge}
+            <span class="player-count">👥 ${r.playersCount} / ${r.capacity}</span>
+            ${r.hasPassword ? '<span>🔒 Protected</span>' : '<span>🌐 Public</span>'}
+          </div>
+          <button class="btn btn-secondary btn-block btn-sm" onclick="joinRoomByCode('${r.roomId}', ${r.hasPassword})">
+            Join Room
+          </button>
         </div>
-        <div class="room-card-body">
-          <span class="player-count">👥 ${r.playersCount} / ${r.capacity}</span>
-          ${r.hasPassword ? '<span>🔒 Protected</span>' : '<span>🌐 Public</span>'}
-        </div>
-        <button class="btn btn-secondary btn-block btn-sm" onclick="joinRoomByCode('${r.roomId}', ${r.hasPassword})">
-          Join Room
-        </button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } catch (err) {
     console.error('Fetch rooms failed:', err);
   }
@@ -604,16 +613,93 @@ function initSocket() {
     if (currentRoom) {
       currentRoom.status = 'playing';
       if (data.players) currentRoom.players = data.players;
+      if (data.gameType) currentRoom.gameType = data.gameType;
+      if (data.boardSize) currentRoom.boardSize = data.boardSize;
+      if (data.grid) {
+        if (!currentRoom.gameData) currentRoom.gameData = {};
+        currentRoom.gameData.grid = data.grid;
+        currentRoom.gameData.scores = data.scores || {};
+        currentRoom.gameData.completedSOS = data.completedSOS || [];
+      }
     }
 
     const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
     showToast(`🎮 GAME STARTED! ${isMyTurn ? 'YOU start first!' : currentTurnName + ' starts first!'}`, 'success');
     updateTurnStateUI();
-    renderBingoBoard();
+
+    if (currentRoom && currentRoom.gameType === 'sos') {
+      const size = currentRoom.boardSize || 5;
+      const grid = data.grid || Array(size).fill(null).map(() => Array(size).fill(''));
+      renderSOSBoard(grid, size, data.completedSOS || []);
+      renderSOSScoreboard();
+    } else {
+      renderBingoBoard();
+    }
 
     if (isMyTurn) {
       SoundFX.playYourTurn();
     }
+  });
+
+  socket.on('sos_move_made', (data) => {
+    const { placedBy, row, col, letter, grid, scores, newSOSLines, completedSOS, currentTurnUserId: nextTurnId, currentTurnName: nextTurnName, extraTurn, isFinished } = data;
+
+    if (currentRoom) {
+      if (!currentRoom.gameData) currentRoom.gameData = {};
+      currentRoom.gameData.grid = grid;
+      currentRoom.gameData.scores = scores;
+      currentRoom.gameData.completedSOS = completedSOS;
+    }
+
+    currentTurnUserId = nextTurnId;
+    currentTurnName = nextTurnName;
+
+    const size = currentRoom ? (currentRoom.boardSize || 5) : 5;
+    renderSOSBoard(grid, size, completedSOS);
+    renderSOSScoreboard();
+    updateTurnStateUI();
+
+    const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+
+    if (newSOSLines && newSOSLines.length > 0) {
+      SoundFX.playTileMarked();
+      if (extraTurn) {
+        showToast(`✨ ${placedBy.name} formed SOS (+${newSOSLines.length} pt) & gets an EXTRA TURN! 🎉`, 'success');
+      }
+    } else {
+      SoundFX.playTileClick();
+    }
+
+    if (!isFinished && isMyTurn) {
+      SoundFX.playYourTurn();
+      showToast(`IT IS YOUR TURN NOW! 🔥`, 'success');
+    }
+  });
+
+  socket.on('sos_game_over', (data) => {
+    roomStatus = 'finished';
+    const { winners, scores } = data;
+    SoundFX.playVictory();
+
+    const isWinner = winners.some(w => currentUser && w.userId === currentUser.userId);
+    const winnerNames = winners.map(w => w.name).join(' & ');
+
+    document.getElementById('victoryTitle').textContent = isWinner ? `🏆 YOU WON!` : `🏆 MATCH RESULTS`;
+    document.getElementById('victoryMessage').textContent = winners.length > 1
+      ? `It's a TIE between ${winnerNames}!`
+      : `${winnerNames} won with ${winners[0]?.score || 0} SOSs!`;
+
+    const leaderboard = (currentRoom?.players || []).map(p => ({
+      userId: p.userId,
+      name: p.name,
+      profileImageUrl: p.profileImageUrl,
+      position: winners.some(w => w.userId === p.userId) ? 1 : 2,
+      timeDisplay: `${scores[p.userId] || 0} SOSs`
+    })).sort((a, b) => (scores[b.userId] || 0) - (scores[a.userId] || 0));
+
+    renderVictoryLeaderboard(leaderboard);
+    openModal('victoryModal');
+    if (window.confetti) confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
   });
 
   socket.on('number_picked', (data) => {
@@ -751,9 +837,26 @@ function handleRoomJoinedOrCreated(data) {
   document.getElementById('gameRoomName').textContent = currentRoom.name;
   document.getElementById('gameRoomCode').textContent = currentRoom.roomId;
 
-  updateBingoLinesUI();
+  const isSOS = currentRoom.gameType === 'sos';
+  const bingoArea = document.getElementById('bingoArea');
+  const sosArea = document.getElementById('sosArea');
+
+  if (isSOS) {
+    bingoArea.style.display = 'none';
+    sosArea.style.display = 'block';
+    const size = currentRoom.boardSize || 5;
+    const grid = (gameData && gameData.grid) || Array(size).fill(null).map(() => Array(size).fill(''));
+    const completedSOS = (gameData && gameData.completedSOS) || [];
+    renderSOSBoard(grid, size, completedSOS);
+    renderSOSScoreboard();
+  } else {
+    bingoArea.style.display = 'block';
+    sosArea.style.display = 'none';
+    updateBingoLinesUI();
+    renderBingoBoard();
+  }
+
   updateTurnStateUI();
-  renderBingoBoard();
 
   VoiceChat.initInRoom(currentRoom.roomId);
 
@@ -769,7 +872,10 @@ function handleRoomJoinedOrCreated(data) {
 function updateTurnStateUI() {
   const hostBtn = document.getElementById('hostStartBtn');
   const statusText = document.getElementById('gameStatusText');
+  const sosTurnText = document.getElementById('sosTurnText');
+  const sosTurnBanner = document.getElementById('sosTurnBanner');
   const isHost = currentUser && currentRoom && (currentUser.userId === currentRoom.creatorId);
+  const isSOS = currentRoom && currentRoom.gameType === 'sos';
 
   if (roomStatus === 'waiting') {
     if (isHost) {
@@ -779,20 +885,29 @@ function updateTurnStateUI() {
       hostBtn.style.display = 'none';
       statusText.textContent = `Waiting for Host (${currentRoom ? currentRoom.creatorName : 'Host'}) to start game...`;
     }
+    if (sosTurnText) sosTurnText.textContent = 'Waiting for game to start...';
+    if (sosTurnBanner) sosTurnBanner.classList.remove('your-turn');
   } else if (roomStatus === 'playing') {
     hostBtn.style.display = 'none';
     const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
     if (isMyTurn) {
-      statusText.textContent = '🕹️ YOUR TURN! Click any number on your board to pick it!';
+      statusText.textContent = isSOS ? '🕹️ YOUR TURN! Select S or O and tap any grid box!' : '🕹️ YOUR TURN! Click any number on your board to pick it!';
+      if (sosTurnText) sosTurnText.textContent = '🕹️ YOUR TURN! Tap an empty grid cell to place ' + selectedSOSLetter;
+      if (sosTurnBanner) sosTurnBanner.classList.add('your-turn');
     } else {
       statusText.textContent = `⏳ Waiting for ${currentTurnName}'s turn...`;
+      if (sosTurnText) sosTurnText.textContent = `⏳ Waiting for ${currentTurnName}'s turn...`;
+      if (sosTurnBanner) sosTurnBanner.classList.remove('your-turn');
     }
   } else if (roomStatus === 'finished') {
     hostBtn.style.display = 'none';
     statusText.textContent = '🏆 Game Finished!';
+    if (sosTurnText) sosTurnText.textContent = '🏆 Game Finished!';
+    if (sosTurnBanner) sosTurnBanner.classList.remove('your-turn');
   }
 
   renderPlayersStrip();
+  if (isSOS) renderSOSScoreboard();
 }
 
 function renderBingoBoard() {
@@ -981,6 +1096,184 @@ function closeVictoryAndLeave() {
 }
 
 // ==========================================================================
+// SOS Game UI & Logic Helpers
+// ==========================================================================
+
+function selectCreateGameType(type) {
+  document.getElementById('createGameType').value = type;
+  const btnBingo = document.getElementById('btnGameBingo');
+  const btnSOS = document.getElementById('btnGameSOS');
+  const sizeGroup = document.getElementById('sosSizeGroup');
+
+  if (type === 'sos') {
+    btnBingo.classList.remove('active');
+    btnSOS.classList.add('active');
+    sizeGroup.style.display = 'block';
+  } else {
+    btnBingo.classList.add('active');
+    btnSOS.classList.remove('active');
+    sizeGroup.style.display = 'none';
+  }
+}
+
+function selectCreateBoardSize(size) {
+  document.getElementById('createBoardSize').value = size;
+  const btn3 = document.getElementById('btnSize3');
+  const btn5 = document.getElementById('btnSize5');
+
+  if (size === 3) {
+    btn3.classList.add('active');
+    btn5.classList.remove('active');
+  } else {
+    btn3.classList.remove('active');
+    btn5.classList.add('active');
+  }
+}
+
+function selectSOSLetter(letter) {
+  selectedSOSLetter = letter;
+  const btnS = document.getElementById('btnLetterS');
+  const btnO = document.getElementById('btnLetterO');
+
+  if (letter === 'S') {
+    btnS.classList.add('active');
+    btnO.classList.remove('active');
+  } else {
+    btnS.classList.remove('active');
+    btnO.classList.add('active');
+  }
+
+  updateTurnStateUI();
+}
+
+function renderSOSBoard(grid, boardSize = 5, completedSOS = []) {
+  const container = document.getElementById('sosGrid');
+  if (!container) return;
+
+  container.className = `sos-grid grid-${boardSize}x${boardSize}`;
+  container.innerHTML = '';
+
+  const isPlaying = roomStatus === 'playing';
+  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+
+  for (let r = 0; r < boardSize; r++) {
+    for (let c = 0; c < boardSize; c++) {
+      const cellVal = grid && grid[r] ? (grid[r][c] || '') : '';
+      const cell = document.createElement('div');
+      let classes = 'sos-cell';
+
+      if (cellVal !== '') {
+        classes += ` occupied placed-${cellVal}`;
+      }
+
+      cell.className = classes;
+      cell.textContent = cellVal;
+
+      if (cellVal === '' && isPlaying && isMyTurn) {
+        cell.onclick = () => handleSOSCellClick(r, c);
+      }
+
+      container.appendChild(cell);
+    }
+  }
+
+  setTimeout(() => drawSOSLines(completedSOS, boardSize), 50);
+}
+
+function renderSOSScoreboard() {
+  const container = document.getElementById('sosScoreboard');
+  if (!container || !currentRoom || !currentRoom.players) return;
+
+  const scores = (currentRoom.gameData && currentRoom.gameData.scores) || {};
+
+  container.innerHTML = currentRoom.players.map(p => {
+    const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
+    const score = scores[p.userId] || 0;
+    return `
+      <div class="sos-player-score ${isTurn ? 'active-turn' : ''}">
+        <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="sos-player-avatar" />
+        <div class="sos-player-info">
+          <span class="sos-player-name">${escapeHtml(p.name)}</span>
+          <span class="sos-score-val">${score} pts</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function handleSOSCellClick(row, col) {
+  if (roomStatus !== 'playing') {
+    showToast('Game has not started yet!', 'error');
+    return;
+  }
+  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+  if (!isMyTurn) {
+    showToast(`Not your turn! Waiting for ${currentTurnName}...`, 'error');
+    return;
+  }
+
+  SoundFX.playTileClick();
+
+  socket.emit('sos_make_move', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId,
+    row,
+    col,
+    letter: selectedSOSLetter
+  });
+}
+
+function drawSOSLines(completedSOS = [], boardSize = 5) {
+  const svg = document.getElementById('sosLinesOverlay');
+  if (!svg) return;
+  svg.innerHTML = '';
+
+  if (!completedSOS || completedSOS.length === 0) return;
+
+  const container = document.getElementById('sosGrid');
+  if (!container) return;
+
+  const rect = container.getBoundingClientRect();
+  const width = rect.width;
+  const height = rect.height;
+
+  if (width === 0 || height === 0) return;
+
+  const colors = ['#f43f5e', '#10b981', '#38bdf8', '#fbbf24', '#a855f7'];
+
+  completedSOS.forEach((sos, idx) => {
+    if (!sos.coords || sos.coords.length < 3) return;
+    const p1 = sos.coords[0];
+    const p3 = sos.coords[2];
+
+    const cellW = width / boardSize;
+    const cellH = height / boardSize;
+
+    const x1 = (p1[1] + 0.5) * cellW;
+    const y1 = (p1[0] + 0.5) * cellH;
+    const x2 = (p3[1] + 0.5) * cellW;
+    const y2 = (p3[0] + 0.5) * cellH;
+
+    const color = colors[idx % colors.length];
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', x1);
+    line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2);
+    line.setAttribute('y2', y2);
+    line.setAttribute('stroke', color);
+    line.setAttribute('stroke-width', '6');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('class', 'sos-line');
+    svg.appendChild(line);
+  });
+}
+
+window.selectCreateGameType = selectCreateGameType;
+window.selectCreateBoardSize = selectCreateBoardSize;
+window.selectSOSLetter = selectSOSLetter;
+
+// ==========================================================================
 // Room Actions & UI Handlers
 // ==========================================================================
 
@@ -1000,6 +1293,8 @@ function handleCreateRoomSubmit(event) {
   event.preventDefault();
   if (!currentUser) return openModal('authModal');
 
+  const gameType = document.getElementById('createGameType').value || 'bingo';
+  const boardSize = Number(document.getElementById('createBoardSize').value) || 5;
   const roomName = document.getElementById('createRoomName').value.trim();
   const capacity = Number(document.getElementById('createCapacity').value) || 4;
   const password = document.getElementById('createPassword').value.trim();
@@ -1012,7 +1307,9 @@ function handleCreateRoomSubmit(event) {
     roomName,
     capacity,
     password,
-    customRoomId
+    customRoomId,
+    gameType,
+    boardSize
   });
 }
 
@@ -1068,6 +1365,10 @@ function leaveRoomUI() {
   markedIndexes.clear();
   pickedNumbersSet.clear();
   document.getElementById('drawnBallBanner').style.display = 'none';
+  const svg = document.getElementById('sosLinesOverlay');
+  if (svg) svg.innerHTML = '';
+  const sosGrid = document.getElementById('sosGrid');
+  if (sosGrid) sosGrid.innerHTML = '';
   switchView('lobbyView');
   fetchRooms();
 }

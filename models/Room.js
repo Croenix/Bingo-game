@@ -76,6 +76,16 @@ const roomSchema = new mongoose.Schema(
       type: Date,
       required: true
     },
+    gameType: {
+      type: String,
+      enum: ['bingo', 'sos'],
+      default: 'bingo'
+    },
+    boardSize: {
+      type: Number,
+      enum: [3, 5],
+      default: 5
+    },
     gameData: {
       type: mongoose.Schema.Types.Mixed,
       default: {}

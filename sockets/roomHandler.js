@@ -5,6 +5,102 @@ const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../
 const { generateUniqueBingoCard } = require('../utils/bingoCardGenerator');
 const { calculateExpiresAt, checkAndRemoveIfExpired, sanitizeRoom } = require('../utils/roomHelpers');
 
+function checkFormedSOS(grid, boardSize, row, col, activeUserId, activeUserName, existingCompletedSOS) {
+  const newSOSList = [];
+  const existingSet = new Set(
+    (existingCompletedSOS || []).map(sos => {
+      const pts = [...sos.coords].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+      return pts.map(p => `${p[0]},${p[1]}`).join('|');
+    })
+  );
+
+  const directions = [
+    [0, 1],   // Horizontal
+    [1, 0],   // Vertical
+    [1, 1],   // Main Diagonal
+    [-1, 1]   // Anti-Diagonal
+  ];
+
+  for (const [dr, dc] of directions) {
+    for (let offset = -2; offset <= 0; offset++) {
+      const r0 = row + offset * dr;
+      const c0 = col + offset * dc;
+      const r1 = r0 + dr;
+      const c1 = c0 + dc;
+      const r2 = r0 + 2 * dr;
+      const c2 = c0 + 2 * dc;
+
+      if (
+        r0 >= 0 && r0 < boardSize && c0 >= 0 && c0 < boardSize &&
+        r1 >= 0 && r1 < boardSize && c1 >= 0 && c1 < boardSize &&
+        r2 >= 0 && r2 < boardSize && c2 >= 0 && c2 < boardSize
+      ) {
+        if (
+          grid[r0][c0] === 'S' &&
+          grid[r1][c1] === 'O' &&
+          grid[r2][c2] === 'S'
+        ) {
+          const coords = [[r0, c0], [r1, c1], [r2, c2]];
+          const sortedCoords = [...coords].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+          const lineKey = sortedCoords.map(p => `${p[0]},${p[1]}`).join('|');
+
+          if (!existingSet.has(lineKey)) {
+            existingSet.add(lineKey);
+            newSOSList.push({
+              playerUserId: activeUserId,
+              playerName: activeUserName,
+              coords
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return newSOSList;
+}
+
+function initializeGameData(room) {
+  const firstPlayer = room.players[Math.floor(Math.random() * room.players.length)];
+  room.status = 'playing';
+
+  if (room.gameType === 'sos') {
+    const size = [3, 5].includes(room.boardSize) ? room.boardSize : 5;
+    const grid = Array(size).fill(null).map(() => Array(size).fill(''));
+    const scores = {};
+    room.players.forEach(p => {
+      scores[p.userId] = 0;
+    });
+
+    room.gameData = {
+      ...(room.gameData || {}),
+      gameType: 'sos',
+      boardSize: size,
+      grid,
+      scores,
+      completedSOS: [],
+      currentTurnUserId: firstPlayer.userId,
+      currentTurnName: firstPlayer.name,
+      startedAt: Date.now(),
+      winners: []
+    };
+  } else {
+    room.gameData = {
+      ...(room.gameData || {}),
+      gameType: 'bingo',
+      currentTurnUserId: firstPlayer.userId,
+      currentTurnName: firstPlayer.name,
+      pickedNumbers: [],
+      lastPickedNumber: null,
+      lastPickedBy: null,
+      startedAt: Date.now(),
+      winners: []
+    };
+  }
+
+  return firstPlayer;
+}
+
 function registerRoomHandlers(io, socket) {
   const sendError = (eventName, message) => {
     socket.emit('room_error', { event: eventName, error: message });
@@ -31,8 +127,13 @@ function registerRoomHandlers(io, socket) {
         entryCoin = 0,
         entryCurrencyType = 'coins',
         rewardCoin = 0,
-        rewardCurrencyType = 'coins'
+        rewardCurrencyType = 'coins',
+        gameType: inputGameType = 'bingo',
+        boardSize: inputBoardSize = 5
       } = payload;
+
+      const gameType = ['bingo', 'sos'].includes(String(inputGameType).toLowerCase()) ? String(inputGameType).toLowerCase() : 'bingo';
+      const boardSize = [3, 5].includes(Number(inputBoardSize)) ? Number(inputBoardSize) : 5;
       if (!userId || !userName) {
         return sendError('create_room', 'userId and userName are required');
       }
@@ -115,6 +216,8 @@ function registerRoomHandlers(io, socket) {
         creatorId: formattedUserId,
         creatorName: trustedName,
         capacity: Math.min(Math.max(Number(capacity) || 4, 2), 10),
+        gameType,
+        boardSize,
         status: 'waiting',
         vivoxChannelUri,
         expiresAt,
@@ -356,24 +459,23 @@ function registerRoomHandlers(io, socket) {
 
       // Auto-start game if capacity limit is reached
       if (updatedRoom.status === 'waiting' && updatedRoom.players.length >= updatedRoom.capacity) {
-        updatedRoom.gameData = {
-          currentTurnUserId: firstPlayer.userId,
-          currentTurnName: firstPlayer.name,
-          pickedNumbers: [],
-          lastPickedNumber: null,
-          lastPickedBy: null,
-          startedAt: Date.now(),
-          winners: []
-        };
+        const firstPlayer = initializeGameData(updatedRoom);
         await updatedRoom.save();
 
         io.to(formattedRoomId).emit('game_started', {
           roomId: formattedRoomId,
+          gameType: updatedRoom.gameType || 'bingo',
+          boardSize: updatedRoom.boardSize || 5,
           status: 'playing',
           currentTurnUserId: firstPlayer.userId,
           currentTurnName: firstPlayer.name,
           players: updatedRoom.players,
-          startedAt: updatedRoom.gameData.startedAt
+          startedAt: updatedRoom.gameData.startedAt,
+          ...(updatedRoom.gameType === 'sos' ? {
+            grid: updatedRoom.gameData.grid,
+            scores: updatedRoom.gameData.scores,
+            completedSOS: updatedRoom.gameData.completedSOS
+          } : {})
         });
       }
     } catch (err) {
@@ -404,31 +506,196 @@ function registerRoomHandlers(io, socket) {
         return sendError('start_game', 'Not enough players in room');
       }
 
-      const firstPlayer = room.players[Math.floor(Math.random() * room.players.length)];
-      room.status = 'playing';
-      room.gameData = {
-        currentTurnUserId: firstPlayer.userId,
-        currentTurnName: firstPlayer.name,
-        pickedNumbers: [],
-        lastPickedNumber: null,
-        lastPickedBy: null,
-        startedAt: Date.now(),
-        winners: []
-      };
-
+      const firstPlayer = initializeGameData(room);
       await room.save();
 
       io.to(formattedRoomId).emit('game_started', {
         roomId: formattedRoomId,
+        gameType: room.gameType || 'bingo',
+        boardSize: room.boardSize || 5,
         status: 'playing',
         currentTurnUserId: firstPlayer.userId,
         currentTurnName: firstPlayer.name,
         players: room.players,
-        startedAt: room.gameData.startedAt
+        startedAt: room.gameData.startedAt,
+        ...(room.gameType === 'sos' ? {
+          grid: room.gameData.grid,
+          scores: room.gameData.scores,
+          completedSOS: room.gameData.completedSOS
+        } : {})
       });
     } catch (err) {
       console.error('Socket start_game error:', err);
       sendError('start_game', err.message || 'Failed to start game');
+    }
+  });
+
+  /**
+   * Event: sos_make_move
+   * Payload: { roomId, userId, row, col, letter }
+   */
+  socket.on('sos_make_move', async (payload = {}) => {
+    try {
+      const { roomId, userId, row, col, letter } = payload;
+      if (!roomId || !userId || row === undefined || col === undefined || !letter) {
+        return sendError('sos_make_move', 'roomId, userId, row, col, and letter are required');
+      }
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const selectedLetter = String(letter).toUpperCase().trim();
+
+      if (!['S', 'O'].includes(selectedLetter)) {
+        return sendError('sos_make_move', 'Letter must be S or O');
+      }
+
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('sos_make_move', 'Room not found');
+
+      if (room.gameType !== 'sos') {
+        return sendError('sos_make_move', 'This room is not an SOS room');
+      }
+
+      if (room.status !== 'playing') {
+        return sendError('sos_make_move', 'Game is not currently active');
+      }
+
+      if (!room.gameData || room.gameData.currentTurnUserId !== formattedUserId) {
+        return sendError('sos_make_move', "It's not your turn!");
+      }
+
+      const boardSize = room.boardSize || 5;
+      const r = Number(row);
+      const c = Number(col);
+
+      if (isNaN(r) || isNaN(c) || r < 0 || r >= boardSize || c < 0 || c >= boardSize) {
+        return sendError('sos_make_move', 'Invalid row or column indices');
+      }
+
+      let grid = room.gameData.grid || Array(boardSize).fill(null).map(() => Array(boardSize).fill(''));
+      if (grid[r] && grid[r][c] !== '') {
+        return sendError('sos_make_move', 'Cell is already occupied');
+      }
+
+      grid[r][c] = selectedLetter;
+
+      const playerObj = room.players.find(p => p.userId === formattedUserId);
+      const playerName = playerObj ? playerObj.name : formattedUserId;
+
+      const newSOSLines = checkFormedSOS(
+        grid,
+        boardSize,
+        r,
+        c,
+        formattedUserId,
+        playerName,
+        room.gameData.completedSOS || []
+      );
+
+      let scores = room.gameData.scores || {};
+      if (typeof scores[formattedUserId] !== 'number') {
+        scores[formattedUserId] = 0;
+      }
+
+      if (newSOSLines.length > 0) {
+        scores[formattedUserId] += newSOSLines.length;
+        if (!room.gameData.completedSOS) room.gameData.completedSOS = [];
+        room.gameData.completedSOS.push(...newSOSLines);
+      }
+
+      room.gameData.grid = grid;
+      room.gameData.scores = scores;
+      room.markModified('gameData.grid');
+      room.markModified('gameData.scores');
+      room.markModified('gameData.completedSOS');
+
+      // Check if grid is completely filled
+      let isBoardFull = true;
+      for (let i = 0; i < boardSize; i++) {
+        for (let j = 0; j < boardSize; j++) {
+          if (grid[i][j] === '') {
+            isBoardFull = false;
+            break;
+          }
+        }
+        if (!isBoardFull) break;
+      }
+
+      let extraTurnGranted = false;
+      if (isBoardFull) {
+        room.status = 'finished';
+        let maxScore = -1;
+        for (const p of room.players) {
+          const s = scores[p.userId] || 0;
+          if (s > maxScore) maxScore = s;
+        }
+
+        const winners = room.players
+          .filter(p => (scores[p.userId] || 0) === maxScore)
+          .map(p => ({ userId: p.userId, name: p.name, score: scores[p.userId] || 0 }));
+
+        room.gameData.winners = winners;
+        room.markModified('gameData');
+        await room.save();
+
+        io.to(formattedRoomId).emit('sos_move_made', {
+          roomId: formattedRoomId,
+          placedBy: { userId: formattedUserId, name: playerName },
+          row: r,
+          col: c,
+          letter: selectedLetter,
+          grid,
+          scores,
+          newSOSLines,
+          completedSOS: room.gameData.completedSOS,
+          currentTurnUserId: room.gameData.currentTurnUserId,
+          currentTurnName: room.gameData.currentTurnName,
+          extraTurn: false,
+          isFinished: true
+        });
+
+        io.to(formattedRoomId).emit('sos_game_over', {
+          roomId: formattedRoomId,
+          winners,
+          scores,
+          completedSOS: room.gameData.completedSOS,
+          grid
+        });
+
+        return;
+      }
+
+      // If SOS formed -> Extra turn granted to current player! Else next player's turn.
+      if (newSOSLines.length > 0) {
+        extraTurnGranted = true;
+      } else {
+        const currIdx = room.players.findIndex(p => p.userId === formattedUserId);
+        const nextPlayer = room.players[(currIdx + 1) % room.players.length];
+        room.gameData.currentTurnUserId = nextPlayer.userId;
+        room.gameData.currentTurnName = nextPlayer.name;
+      }
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('sos_move_made', {
+        roomId: formattedRoomId,
+        placedBy: { userId: formattedUserId, name: playerName },
+        row: r,
+        col: c,
+        letter: selectedLetter,
+        grid,
+        scores,
+        newSOSLines,
+        completedSOS: room.gameData.completedSOS,
+        currentTurnUserId: room.gameData.currentTurnUserId,
+        currentTurnName: room.gameData.currentTurnName,
+        extraTurn: extraTurnGranted,
+        isFinished: false
+      });
+    } catch (err) {
+      console.error('Socket sos_make_move error:', err);
+      sendError('sos_make_move', err.message || 'Failed to make SOS move');
     }
   });
 

@@ -35,8 +35,13 @@ router.post('/', async (req, res, next) => {
       roomId: inputRoomId,
       customRoomId,
       password = '',
-      isPublic
+      isPublic,
+      gameType: inputGameType = 'bingo',
+      boardSize: inputBoardSize = 5
     } = req.body;
+
+    const gameType = ['bingo', 'sos'].includes(String(inputGameType).toLowerCase()) ? String(inputGameType).toLowerCase() : 'bingo';
+    const boardSize = [3, 5].includes(Number(inputBoardSize)) ? Number(inputBoardSize) : 5;
 
     if (!creatorId || !creatorName) {
       return res.status(400).json({ error: 'creatorId and creatorName are required' });
@@ -98,6 +103,8 @@ router.post('/', async (req, res, next) => {
       creatorId: formattedCreatorId,
       creatorName: trustedCreatorName,
       capacity: maxCap,
+      gameType,
+      boardSize,
       status: 'waiting',
       vivoxChannelUri,
       expiresAt,

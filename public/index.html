@@ -146,34 +146,64 @@
           <!-- Dynamically populated players badges -->
         </div>
 
-        <!-- Last Drawn Ball Banner -->
-        <div id="drawnBallBanner" class="drawn-ball-banner" style="display: none;">
-          <div class="ball-icon-spin">🎯</div>
-          <div class="ball-details">
-            <span class="ball-label">LAST PICKED NUMBER</span>
-            <span id="drawnBallNumber" class="ball-number">--</span>
+        <!-- BINGO GAME AREA -->
+        <div id="bingoArea">
+          <!-- Last Drawn Ball Banner -->
+          <div id="drawnBallBanner" class="drawn-ball-banner" style="display: none;">
+            <div class="ball-icon-spin">🎯</div>
+            <div class="ball-details">
+              <span class="ball-label">LAST PICKED NUMBER</span>
+              <span id="drawnBallNumber" class="ball-number">--</span>
+            </div>
+            <div id="drawnBallPicker" class="ball-picker-name">by Player</div>
           </div>
-          <div id="drawnBallPicker" class="ball-picker-name">by Player</div>
+
+          <!-- B-I-N-G-O Progress Header -->
+          <div class="bingo-header-card">
+            <div class="bingo-letters">
+              <div class="bingo-letter" id="letter-B">B</div>
+              <div class="bingo-letter" id="letter-I">I</div>
+              <div class="bingo-letter" id="letter-N">N</div>
+              <div class="bingo-letter" id="letter-G">G</div>
+              <div class="bingo-letter" id="letter-O">O</div>
+            </div>
+            <div class="bingo-lines-count">
+              Lines Cleared: <strong id="linesClearedCount">0</strong>/5
+            </div>
+          </div>
+
+          <!-- Game Ticket Board -->
+          <div class="board-container">
+            <div class="bingo-grid" id="bingoGrid">
+              <!-- 25 Interactive Bingo Tiles generated dynamically -->
+            </div>
+          </div>
         </div>
 
-        <!-- B-I-N-G-O Progress Header -->
-        <div class="bingo-header-card">
-          <div class="bingo-letters">
-            <div class="bingo-letter" id="letter-B">B</div>
-            <div class="bingo-letter" id="letter-I">I</div>
-            <div class="bingo-letter" id="letter-N">N</div>
-            <div class="bingo-letter" id="letter-G">G</div>
-            <div class="bingo-letter" id="letter-O">O</div>
+        <!-- SOS GAME AREA -->
+        <div id="sosArea" style="display: none;">
+          <div class="sos-turn-banner" id="sosTurnBanner">
+            <span class="pulse-dot"></span>
+            <span id="sosTurnText">Waiting for game to start...</span>
           </div>
-          <div class="bingo-lines-count">
-            Lines Cleared: <strong id="linesClearedCount">0</strong>/5
-          </div>
-        </div>
 
-        <!-- Game Ticket Board -->
-        <div class="board-container">
-          <div class="bingo-grid" id="bingoGrid">
-            <!-- 25 Interactive Bingo Tiles generated dynamically -->
+          <div class="sos-scoreboard-card" id="sosScoreboard">
+            <!-- Dynamic player scores rendered here -->
+          </div>
+
+          <div class="sos-letter-picker">
+            <span class="picker-label">Letter:</span>
+            <div class="letter-buttons">
+              <button type="button" id="btnLetterS" class="btn-letter active" onclick="selectSOSLetter('S')">S</button>
+              <button type="button" id="btnLetterO" class="btn-letter" onclick="selectSOSLetter('O')">O</button>
+            </div>
+          </div>
+
+          <div class="sos-board-container">
+            <div id="sosGrid" class="sos-grid grid-5x5">
+              <!-- Grid cells rendered dynamically -->
+            </div>
+            <svg id="sosLinesOverlay" class="sos-svg-overlay"></svg>
           </div>
         </div>
 
@@ -235,6 +265,28 @@
         </div>
 
         <form id="createRoomForm" onsubmit="handleCreateRoomSubmit(event)">
+          <div class="form-group">
+            <label>Select Game *</label>
+            <div class="game-type-selector">
+              <button type="button" class="type-btn active" id="btnGameBingo" onclick="selectCreateGameType('bingo')">
+                <span class="btn-icon">🎲</span> Bingo
+              </button>
+              <button type="button" class="type-btn" id="btnGameSOS" onclick="selectCreateGameType('sos')">
+                <span class="btn-icon">🔤</span> SOS Game
+              </button>
+            </div>
+            <input type="hidden" id="createGameType" value="bingo" />
+          </div>
+
+          <div class="form-group" id="sosSizeGroup" style="display: none;">
+            <label>SOS Grid Size *</label>
+            <div class="size-selector">
+              <button type="button" class="size-btn" id="btnSize3" onclick="selectCreateBoardSize(3)">3 x 3 Box</button>
+              <button type="button" class="size-btn active" id="btnSize5" onclick="selectCreateBoardSize(5)">5 x 5 Box</button>
+            </div>
+            <input type="hidden" id="createBoardSize" value="5" />
+          </div>
+
           <div class="form-group">
             <label for="createRoomName">Room Name *</label>
             <input type="text" id="createRoomName" class="form-control" placeholder="e.g. Winner's Lounge" required />
