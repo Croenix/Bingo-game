@@ -3,7 +3,7 @@
    ========================================================================== */
 
 // Global Cache Data ID & Version Control
-const BINGO_CACHE_VERSION = 'v2_2026_09_21';
+const BINGO_CACHE_VERSION = 'v3_2026_09_23';
 (function autoPurgeLegacyCache() {
   try {
     // Strictly purge any stored user session JSON from localStorage (only deviceId is retained)

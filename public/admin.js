@@ -6,7 +6,7 @@
   'use strict';
 
   // Global Cache Data ID & Version Control
-  const BINGO_CACHE_VERSION = 'v2_2026_09_20';
+  const BINGO_CACHE_VERSION = 'v3_2026_09_23';
   try {
     const activeVersion = localStorage.getItem('bingo_cache_version');
     if (activeVersion !== BINGO_CACHE_VERSION) {
