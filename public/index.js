@@ -324,6 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSocket();
   fetchChallenges();
   fetchRooms();
+  initGameModeAutoScroll();
 });
 
 // ==========================================================================
@@ -2131,6 +2132,170 @@ window.handleLiarsCallLiarDeck = handleLiarsCallLiarDeck;
 window.handleLiarsTriggerPull = handleLiarsTriggerPull;
 window.handleLiarsPlaceBid = handleLiarsPlaceBid;
 window.handleLiarsCallLiarDice = handleLiarsCallLiarDice;
+
+// ==========================================================================
+// Choose Game Mode Filtering, Quick Match & Horizontal Auto-Scroll Engine
+// ==========================================================================
+
+let gameLaunchAutoScrollTimer = null;
+let gameLaunchAutoScrollHovered = false;
+
+function initGameModeAutoScroll() {
+  const container = document.getElementById('gameLaunchGrid');
+  if (!container) return;
+
+  if (gameLaunchAutoScrollTimer) {
+    clearInterval(gameLaunchAutoScrollTimer);
+    gameLaunchAutoScrollTimer = null;
+  }
+
+  const onPause = () => { gameLaunchAutoScrollHovered = true; };
+  const onResume = () => { gameLaunchAutoScrollHovered = false; };
+
+  container.addEventListener('mouseenter', onPause);
+  container.addEventListener('mouseleave', onResume);
+  container.addEventListener('touchstart', onPause, { passive: true });
+  container.addEventListener('touchend', onResume, { passive: true });
+
+  container.addEventListener('scroll', () => {
+    updateCarouselNavDots();
+  }, { passive: true });
+
+  gameLaunchAutoScrollTimer = setInterval(() => {
+    if (gameLaunchAutoScrollHovered) return;
+    if (container.scrollWidth <= container.clientWidth + 10) return;
+
+    const cards = Array.from(container.querySelectorAll('.game-launch-card:not(.is-filtered-out)'));
+    if (cards.length <= 1) return;
+
+    const currentScroll = container.scrollLeft;
+    const cardWidth = cards[0].offsetWidth + 16;
+    const nextIndex = Math.floor((currentScroll + cardWidth / 2) / cardWidth) + 1;
+
+    if (nextIndex >= cards.length) {
+      container.scrollTo({ left: 0, behavior: 'smooth' });
+    } else {
+      container.scrollTo({ left: nextIndex * cardWidth, behavior: 'smooth' });
+    }
+  }, 3500);
+
+  updateCarouselNavDots();
+}
+
+function updateCarouselNavDots() {
+  const container = document.getElementById('gameLaunchGrid');
+  const navContainer = document.getElementById('gameModeCarouselNav');
+  if (!container || !navContainer) return;
+
+  const visibleCards = Array.from(container.querySelectorAll('.game-launch-card:not(.is-filtered-out)'));
+  if (visibleCards.length === 0) return;
+
+  const currentScroll = container.scrollLeft;
+  const cardWidth = visibleCards[0].offsetWidth + 16;
+  const activeIdx = Math.min(
+    visibleCards.length - 1,
+    Math.max(0, Math.round(currentScroll / cardWidth))
+  );
+
+  const dots = navContainer.querySelectorAll('.carousel-dot');
+  dots.forEach((dot, i) => {
+    if (i === activeIdx) {
+      dot.classList.add('active');
+    } else {
+      dot.classList.remove('active');
+    }
+    dot.style.display = i < visibleCards.length ? 'inline-block' : 'none';
+  });
+}
+
+function scrollToGameCard(index) {
+  const container = document.getElementById('gameLaunchGrid');
+  if (!container) return;
+  const visibleCards = Array.from(container.querySelectorAll('.game-launch-card:not(.is-filtered-out)'));
+  if (index >= 0 && index < visibleCards.length) {
+    const card = visibleCards[index];
+    container.scrollTo({ left: card.offsetLeft - container.offsetLeft, behavior: 'smooth' });
+  }
+}
+
+function filterGameModeCards(category, btnElement) {
+  const bar = document.querySelector('.game-mode-filter-bar');
+  if (bar) {
+    bar.querySelectorAll('.mode-filter-pill').forEach(b => b.classList.remove('active'));
+  }
+  if (btnElement) {
+    btnElement.classList.add('active');
+  }
+
+  const cards = document.querySelectorAll('.game-launch-card');
+  cards.forEach(card => {
+    const cardCat = card.getAttribute('data-category');
+    if (category === 'all' || cardCat === category) {
+      card.classList.remove('is-filtered-out');
+      card.style.opacity = '1';
+    } else {
+      card.classList.add('is-filtered-out');
+    }
+  });
+
+  const container = document.getElementById('gameLaunchGrid');
+  if (container) container.scrollTo({ left: 0, behavior: 'smooth' });
+  updateCarouselNavDots();
+}
+
+async function quickMatchGame(gameType) {
+  if (!currentUser) return openModal('authModal');
+  showToast('🔍 Searching for available public rooms...', 'info');
+
+  try {
+    const res = await fetch('/api/rooms');
+    const data = await res.json();
+    const rooms = data.rooms || [];
+
+    const match = rooms.find(r => r.gameType === gameType && r.playersCount < r.capacity && !r.hasPassword);
+    if (match) {
+      showToast(`🎮 Joining public room: ${match.name}!`, 'success');
+      joinRoomByCode(match.roomId, false);
+      return;
+    }
+  } catch (e) {
+    console.warn('Quick match fetch error:', e);
+  }
+
+  const modeTitles = { bingo: 'Bingo Classic', sos: 'SOS Strategy', liars_bar: "Liar's Bar" };
+  const title = modeTitles[gameType] || 'Game';
+  showToast(`✨ No active rooms found. Creating new ${title} room!`, 'info');
+  quickCreateRoomWithGame(gameType, title);
+}
+
+function quickCreateRoomWithGame(gameType, customTitle) {
+  if (!currentUser) return openModal('authModal');
+  const title = customTitle || (gameType === 'sos' ? 'SOS Master' : gameType === 'liars_bar' ? "Liar's Bar" : 'Bingo Room');
+  socket.emit('create_room', {
+    userId: currentUser.userId,
+    userName: currentUser.name,
+    profileImageUrl: currentUser.profileImageUrl,
+    roomName: `${title} #${Math.floor(100 + Math.random() * 890)}`,
+    capacity: gameType === 'sos' ? 2 : 4,
+    gameType,
+    boardSize: 5,
+    liarsMode: 'deck',
+    liarsDeckVariant: 'standard'
+  });
+}
+
+function openCreateRoomWithGame(gameType) {
+  if (!currentUser) return openModal('authModal');
+  openCreateRoomModal();
+  selectCreateGameType(gameType);
+}
+
+window.initGameModeAutoScroll = initGameModeAutoScroll;
+window.scrollToGameCard = scrollToGameCard;
+window.filterGameModeCards = filterGameModeCards;
+window.quickMatchGame = quickMatchGame;
+window.quickCreateRoomWithGame = quickCreateRoomWithGame;
+window.openCreateRoomWithGame = openCreateRoomWithGame;
 
 // ==========================================================================
 // Room Actions & UI Handlers

@@ -92,7 +92,22 @@
 
         <div class="game-launch-grid" id="gameLaunchGrid">
           <!-- BINGO CARD -->
-          <div class="game-launch-card card-bingo-theme" data-category="numbers">
+          <div class="game-launch-card card-bingo-theme" data-category="numbers" data-card-index="0">
+            <!-- Animated Background Bubbles & Sparks -->
+            <div class="card-bubbles-bg">
+              <span class="color-bubble b-1"></span>
+              <span class="color-bubble b-2"></span>
+              <span class="color-bubble b-3"></span>
+              <span class="color-bubble b-4"></span>
+              <span class="color-bubble b-5"></span>
+            </div>
+            <div class="card-sparks-bg">
+              <span class="sparkle-dot s-1">✨</span>
+              <span class="sparkle-dot s-2">🌟</span>
+              <span class="sparkle-dot s-3">⭐</span>
+            </div>
+            <div class="card-shimmer-flare"></div>
+
             <div class="game-card-header-bar">
               <span class="badge-game-type badge-bingo">🎲 BINGO CLASSIC</span>
               <span class="tag-hot">🔥 POPULAR</span>
@@ -131,7 +146,22 @@
           </div>
 
           <!-- SOS CARD -->
-          <div class="game-launch-card card-sos-theme" data-category="strategy">
+          <div class="game-launch-card card-sos-theme" data-category="strategy" data-card-index="1">
+            <!-- Animated Background Bubbles & Sparks -->
+            <div class="card-bubbles-bg">
+              <span class="color-bubble b-1"></span>
+              <span class="color-bubble b-2"></span>
+              <span class="color-bubble b-3"></span>
+              <span class="color-bubble b-4"></span>
+              <span class="color-bubble b-5"></span>
+            </div>
+            <div class="card-sparks-bg">
+              <span class="sparkle-dot s-1">⚡</span>
+              <span class="sparkle-dot s-2">✨</span>
+              <span class="sparkle-dot s-3">💫</span>
+            </div>
+            <div class="card-shimmer-flare"></div>
+
             <div class="game-card-header-bar">
               <span class="badge-game-type badge-sos">🔤 SOS STRATEGY</span>
               <span class="tag-speed">⚡ FAST</span>
@@ -170,7 +200,22 @@
           </div>
 
           <!-- LIAR'S BAR CARD -->
-          <div class="game-launch-card card-liars-theme" data-category="party">
+          <div class="game-launch-card card-liars-theme" data-category="party" data-card-index="2">
+            <!-- Animated Background Bubbles & Sparks -->
+            <div class="card-bubbles-bg">
+              <span class="color-bubble b-1"></span>
+              <span class="color-bubble b-2"></span>
+              <span class="color-bubble b-3"></span>
+              <span class="color-bubble b-4"></span>
+              <span class="color-bubble b-5"></span>
+            </div>
+            <div class="card-sparks-bg">
+              <span class="sparkle-dot s-1">🍷</span>
+              <span class="sparkle-dot s-2">✨</span>
+              <span class="sparkle-dot s-3">🔥</span>
+            </div>
+            <div class="card-shimmer-flare"></div>
+
             <div class="game-card-header-bar">
               <span class="badge-game-type badge-liars">🍷 LIAR'S BAR</span>
               <span class="tag-danger">💀 HIGH STAKES</span>
@@ -207,6 +252,13 @@
               </button>
             </div>
           </div>
+        </div>
+
+        <!-- Mobile Carousel Navigation Dots -->
+        <div class="game-mode-carousel-nav" id="gameModeCarouselNav">
+          <span class="carousel-dot active" onclick="scrollToGameCard(0)" title="Bingo Classic"></span>
+          <span class="carousel-dot" onclick="scrollToGameCard(1)" title="SOS Strategy"></span>
+          <span class="carousel-dot" onclick="scrollToGameCard(2)" title="Liar's Bar"></span>
         </div>
 
         <!-- Challenges Section -->
