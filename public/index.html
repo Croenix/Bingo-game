@@ -22,9 +22,9 @@
     <!-- Top Navigation Bar -->
     <header class="navbar">
       <div class="nav-brand" onclick="switchView('lobbyView')" style="cursor: pointer;">
-        <div class="logo-icon">🎰</div>
+        <div class="logo-icon">🎮</div>
         <div class="logo-stacked">
-          <span class="logo-top">BINGO</span>
+          <span class="logo-top">GAME</span>
           <span class="logo-bottom">ARENA</span>
         </div>
       </div>
@@ -61,8 +61,8 @@
         <!-- Hero Welcome Banner -->
         <div class="hero-banner">
           <div class="hero-content">
-            <h1 class="hero-title">Ready for Bingo? 🔥</h1>
-            <p class="hero-subtitle">Join rooms, challenge online players, and win massive coin prizes!</p>
+            <h1 class="hero-title">Welcome to Game Arena! 🎮</h1>
+            <p class="hero-subtitle">Multi-Game Hub: Play Bingo, SOS Strategy, and Liar's Bar in real-time!</p>
             <div class="hero-actions">
               <button class="btn btn-primary btn-lg glow-effect" onclick="openCreateRoomModal()">
                 <span class="btn-icon">➕</span> Create Room
@@ -74,8 +74,64 @@
           </div>
         </div>
 
+        <!-- Dedicated Game Launch Cards Grid -->
+        <div class="section-header mt-6">
+          <h2>🎯 Choose Game Mode</h2>
+          <span class="badge badge-purple">3 Live Games</span>
+        </div>
+
+        <div class="game-launch-grid" id="gameLaunchGrid">
+          <!-- BINGO CARD -->
+          <div class="game-launch-card card-bingo-theme" onclick="openCreateRoomWithGame('bingo')">
+            <div class="game-card-header-bar">
+              <span class="badge-game-type badge-bingo">🎲 BINGO</span>
+              <span class="players-count-pill">👥 2-4 Players</span>
+            </div>
+            <div class="game-card-body">
+              <div class="game-card-icon">🎯</div>
+              <h3 class="game-card-title">Bingo Classic</h3>
+              <p class="game-card-desc">5x5 Number grid racing! Mark numbers & claim B-I-N-G-O lines first.</p>
+            </div>
+            <button class="btn btn-primary btn-sm glow-effect btn-block mt-3">
+              ▶️ Play Bingo
+            </button>
+          </div>
+
+          <!-- SOS CARD -->
+          <div class="game-launch-card card-sos-theme" onclick="openCreateRoomWithGame('sos')">
+            <div class="game-card-header-bar">
+              <span class="badge-game-type badge-sos">🔤 SOS STRATEGY</span>
+              <span class="players-count-pill">👥 2 Players</span>
+            </div>
+            <div class="game-card-body">
+              <div class="game-card-icon">🔤</div>
+              <h3 class="game-card-title">SOS Grid Master</h3>
+              <p class="game-card-desc">3x3 or 5x5 Letter placement strategy. Form S-O-S sequences to score!</p>
+            </div>
+            <button class="btn btn-info btn-sm glow-effect btn-block mt-3">
+              ▶️ Play SOS
+            </button>
+          </div>
+
+          <!-- LIAR'S BAR CARD -->
+          <div class="game-launch-card card-liars-theme" onclick="openCreateRoomWithGame('liars_bar')">
+            <div class="game-card-header-bar">
+              <span class="badge-game-type badge-liars">🍷 LIAR'S BAR</span>
+              <span class="players-count-pill">👥 2-4 Players</span>
+            </div>
+            <div class="game-card-body">
+              <div class="game-card-icon">🍷</div>
+              <h3 class="game-card-title">Liar's Bar</h3>
+              <p class="game-card-desc">High-stakes deception! Cards deck or dice cups with Russian Roulette.</p>
+            </div>
+            <button class="btn btn-danger btn-sm glow-effect btn-block mt-3">
+              ▶️ Play Liar's Bar
+            </button>
+          </div>
+        </div>
+
         <!-- Challenges Section -->
-        <div class="section-header">
+        <div class="section-header mt-8">
           <h2>🏆 Featured Challenges</h2>
           <span class="badge badge-purple">Live</span>
         </div>

@@ -1477,6 +1477,13 @@ function selectCreateGameType(type) {
   }
 }
 
+function openCreateRoomWithGame(type) {
+  if (!currentUser) return openModal('authModal');
+  selectCreateGameType(type);
+  openModal('createRoomModal');
+}
+window.openCreateRoomWithGame = openCreateRoomWithGame;
+
 function selectCreateLiarsMode(mode) {
   document.getElementById('createLiarsMode').value = mode;
   const btnDeck = document.getElementById('btnLiarsModeDeck');
