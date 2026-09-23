@@ -625,32 +625,77 @@
 
     <!-- User Profile Modal -->
     <div class="modal-overlay" id="profileModal">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>👤 Player Profile</h3>
-          <button class="close-btn" onclick="closeModal('profileModal')">✕</button>
+      <div class="modal-card profile-modal-card">
+        <div class="profile-banner-cover">
+          <span class="profile-level-badge">⭐ PRO GAMER</span>
+          <button class="close-btn profile-close-btn" onclick="closeModal('profileModal')">✕</button>
         </div>
 
         <div class="profile-modal-body">
-          <img id="modalProfileAvatar" src="" alt="Avatar" class="large-avatar" />
-          <h3 id="modalProfileName">Player</h3>
-          <p id="modalProfileUserId" class="sub-text">BGO-0000</p>
-          <p id="modalProfileGmail" class="sub-text">email@gmail.com</p>
+          <div class="profile-avatar-container">
+            <img id="modalProfileAvatar" src="" alt="Avatar" class="large-avatar profile-avatar-glow" />
+            <div class="avatar-edit-badge" title="Online Player">🟢</div>
+          </div>
 
-          <div class="stats-row">
-            <div class="stat-card">
-              <span class="stat-val" id="modalProfileCoins">1,000</span>
-              <span class="stat-lbl">🪙 Coins</span>
+          <div class="profile-identity">
+            <h3 id="modalProfileName" class="profile-display-name">Player</h3>
+            <div class="profile-id-pills">
+              <span id="modalProfileUserId" class="profile-id-tag">BGO-0000</span>
+              <button class="copy-id-btn" onclick="copyUserId()" title="Copy User ID">📋</button>
             </div>
-            <div class="stat-card">
-              <span class="stat-val" id="modalProfileGems">0</span>
-              <span class="stat-lbl">💎 Gems</span>
+            <p id="modalProfileGmail" class="profile-email-text">email@gmail.com</p>
+          </div>
+
+          <!-- Currency & Wallet Row -->
+          <div class="profile-wallet-grid">
+            <div class="wallet-card wallet-coins">
+              <div class="wallet-icon">🪙</div>
+              <div class="wallet-info">
+                <span class="wallet-amount" id="modalProfileCoins">1,000</span>
+                <span class="wallet-label">Arena Coins</span>
+              </div>
+            </div>
+
+            <div class="wallet-card wallet-gems">
+              <div class="wallet-icon">💎</div>
+              <div class="wallet-info">
+                <span class="wallet-amount" id="modalProfileGems">0</span>
+                <span class="wallet-label">Gems</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Career Stats Row -->
+          <div class="profile-career-stats">
+            <div class="career-stat-item">
+              <span class="career-val" id="profileGamesPlayed">24</span>
+              <span class="career-lbl">🎮 Matches</span>
+            </div>
+            <div class="career-stat-item">
+              <span class="career-val text-emerald" id="profileWins">18</span>
+              <span class="career-lbl">🏆 Wins</span>
+            </div>
+            <div class="career-stat-item">
+              <span class="career-val text-gold" id="profileWinRate">75%</span>
+              <span class="career-lbl">🔥 Win Rate</span>
+            </div>
+          </div>
+
+          <!-- Game Mastery Badges -->
+          <div class="profile-mastery-section">
+            <span class="mastery-title">🏅 Game Mastery</span>
+            <div class="mastery-badges">
+              <span class="mastery-badge bingo-master">🎲 Bingo Ace</span>
+              <span class="mastery-badge sos-master">🔤 SOS Master</span>
+              <span class="mastery-badge liars-master">🍷 Liar's Champ</span>
             </div>
           </div>
         </div>
 
-        <div class="modal-footer align-center">
-          <button class="btn btn-danger btn-block" onclick="handleLogout()">Logout / Switch Account</button>
+        <div class="modal-footer profile-footer">
+          <button class="btn btn-outline-danger btn-block glow-effect-red" onclick="handleLogout()">
+            🚪 Logout / Switch Account
+          </button>
         </div>
       </div>
     </div>

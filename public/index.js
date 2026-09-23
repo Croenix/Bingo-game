@@ -2205,6 +2205,13 @@ function copyRoomCode() {
   showToast(`Room code ${currentRoom.roomId} copied! 📋`, 'info');
 }
 
+function copyUserId() {
+  if (!currentUser) return;
+  navigator.clipboard.writeText(currentUser.userId);
+  showToast(`Player ID ${currentUser.userId} copied to clipboard! 📋`, 'info');
+}
+window.copyUserId = copyUserId;
+
 function showToast(message, type = 'info') {
   const container = document.getElementById('toastContainer');
   const toast = document.createElement('div');
