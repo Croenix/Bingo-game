@@ -37,11 +37,15 @@ router.post('/', async (req, res, next) => {
       password = '',
       isPublic,
       gameType: inputGameType = 'bingo',
-      boardSize: inputBoardSize = 5
+      boardSize: inputBoardSize = 5,
+      liarsMode: inputLiarsMode = 'deck',
+      liarsDeckVariant: inputLiarsVariant = 'standard'
     } = req.body;
 
-    const gameType = ['bingo', 'sos'].includes(String(inputGameType).toLowerCase()) ? String(inputGameType).toLowerCase() : 'bingo';
+    const gameType = ['bingo', 'sos', 'liars_bar'].includes(String(inputGameType).toLowerCase()) ? String(inputGameType).toLowerCase() : 'bingo';
     const boardSize = [3, 5].includes(Number(inputBoardSize)) ? Number(inputBoardSize) : 5;
+    const liarsMode = ['deck', 'dice'].includes(String(inputLiarsMode).toLowerCase()) ? String(inputLiarsMode).toLowerCase() : 'deck';
+    const liarsDeckVariant = ['standard', 'devil', 'chaos'].includes(String(inputLiarsVariant).toLowerCase()) ? String(inputLiarsVariant).toLowerCase() : 'standard';
 
     if (!creatorId || !creatorName) {
       return res.status(400).json({ error: 'creatorId and creatorName are required' });
@@ -105,6 +109,8 @@ router.post('/', async (req, res, next) => {
       capacity: maxCap,
       gameType,
       boardSize,
+      liarsMode,
+      liarsDeckVariant,
       status: 'waiting',
       vivoxChannelUri,
       expiresAt,

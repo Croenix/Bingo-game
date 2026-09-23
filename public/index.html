@@ -207,6 +207,123 @@
           </div>
         </div>
 
+        <!-- LIAR'S BAR GAME AREA -->
+        <div id="liarsArea" style="display: none;">
+          <!-- Status Banner -->
+          <div class="liars-turn-banner" id="liarsTurnBanner">
+            <span class="pulse-dot"></span>
+            <span id="liarsTurnText">Waiting for game to start...</span>
+          </div>
+
+          <!-- LIAR'S DECK VIEW -->
+          <div id="liarsDeckView">
+            <div class="table-rank-card" id="tableRankCard">
+              <span class="table-rank-icon">👑</span>
+              <div class="table-rank-details">
+                <span class="table-rank-label">CURRENT TABLE RANK</span>
+                <span class="table-rank-value" id="tableRankValue">KING'S TABLE</span>
+                <span class="table-rank-sub">Kings & Jokers are valid cards</span>
+              </div>
+            </div>
+
+            <!-- Central Saloon Table Pile -->
+            <div class="saloon-table-center">
+              <div class="center-card-pile" id="centerCardPile">
+                <div class="pile-card-stack" id="pileStack">
+                  <!-- Rendered 1-by-1 stacked card backs -->
+                </div>
+                <span class="pile-count-badge" id="pileCountBadge">0 Cards</span>
+              </div>
+
+              <!-- Revealed Cards Challenge Display -->
+              <div id="revealedCardsContainer" class="revealed-cards-container mt-3" style="display: none;">
+                <div class="reveal-header" id="revealHeaderText">🔍 REVEALED CARDS</div>
+                <div class="reveal-cards-flex" id="revealedCardsFlex"></div>
+                <div class="reveal-result-badge" id="revealResultBadge"></div>
+              </div>
+
+              <div class="last-play-badge mt-2" id="lastPlayBadge">No cards played yet</div>
+            </div>
+
+            <!-- Player's Interactive Card Hand -->
+            <div class="my-hand-container">
+              <div class="hand-header">
+                <span>YOUR HAND (<span id="handCount">0</span> cards)</span>
+                <span class="sub-text">Select 1 to 3 cards to play</span>
+              </div>
+              <div class="cards-flex" id="myHandCards">
+                <!-- Card elements rendered dynamically -->
+              </div>
+            </div>
+
+            <!-- Deck Actions Bar -->
+            <div class="liars-actions-bar mt-4">
+              <button id="btnPlayCards" class="btn btn-primary btn-lg glow-effect" onclick="handleLiarsPlayCards()" disabled>
+                🎴 PLAY SELECTED CARDS
+              </button>
+              <button id="btnCallLiarDeck" class="btn btn-danger btn-lg" onclick="handleLiarsCallLiarDeck()" disabled>
+                🤥 CALL LIAR!
+              </button>
+            </div>
+          </div>
+
+          <!-- LIAR'S DICE VIEW -->
+          <div id="liarsDiceView" style="display: none;">
+            <div class="current-bid-card" id="currentBidCard">
+              <span class="bid-icon">🎲</span>
+              <div class="bid-details">
+                <span class="bid-label">CURRENT ACTIVE BID</span>
+                <span class="bid-value" id="currentBidText">No bid placed yet</span>
+              </div>
+            </div>
+
+            <!-- My Hidden Dice Cup -->
+            <div class="my-cup-card mt-3">
+              <div class="cup-header">
+                <span>🥤 YOUR HIDDEN DICE (6 DICE)</span>
+              </div>
+              <div class="dice-flex" id="myDiceFlex">
+                <!-- Dice elements rendered dynamically -->
+              </div>
+            </div>
+
+            <!-- Bidding Controls -->
+            <div class="dice-bidding-controls mt-4">
+              <div class="bidding-inputs">
+                <div class="form-group mb-0 flex-1">
+                  <label for="bidQuantityInput">Quantity</label>
+                  <input type="number" id="bidQuantityInput" class="form-control" min="1" max="48" value="1" />
+                </div>
+                <div class="form-group mb-0 flex-1">
+                  <label for="bidFaceSelect">Die Face</label>
+                  <select id="bidFaceSelect" class="form-control">
+                    <option value="1">1 (⚀)</option>
+                    <option value="2">2 (⚁)</option>
+                    <option value="3">3 (⚂)</option>
+                    <option value="4">4 (⚃)</option>
+                    <option value="5">5 (⚄)</option>
+                    <option value="6">6 (⚅)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="liars-actions-bar mt-3">
+                <button id="btnPlaceBid" class="btn btn-primary btn-lg glow-effect" onclick="handleLiarsPlaceBid()">
+                  🎲 PLACE / RAISE BID
+                </button>
+                <button id="btnCallLiarDice" class="btn btn-danger btn-lg" onclick="handleLiarsCallLiarDice()">
+                  🤥 CALL LIAR!
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Seated Players Roster -->
+          <div class="liars-roster-grid mt-4" id="liarsRosterGrid">
+            <!-- Dynamically populated player seats -->
+          </div>
+        </div>
+
         <!-- Bottom Game Controls Bar -->
         <div class="game-footer">
           <div class="status-indicator">
@@ -272,7 +389,10 @@
                 <span class="btn-icon">🎲</span> Bingo
               </button>
               <button type="button" class="type-btn" id="btnGameSOS" onclick="selectCreateGameType('sos')">
-                <span class="btn-icon">🔤</span> SOS Game
+                <span class="btn-icon">🔤</span> SOS
+              </button>
+              <button type="button" class="type-btn" id="btnGameLiars" onclick="selectCreateGameType('liars_bar')">
+                <span class="btn-icon">🍷</span> Liar's Bar
               </button>
             </div>
             <input type="hidden" id="createGameType" value="bingo" />
@@ -285,6 +405,29 @@
               <button type="button" class="size-btn active" id="btnSize5" onclick="selectCreateBoardSize(5)">5 x 5 Box</button>
             </div>
             <input type="hidden" id="createBoardSize" value="5" />
+          </div>
+
+          <div class="form-group" id="liarsOptionsGroup" style="display: none;">
+            <label>Liar's Bar Game Mode *</label>
+            <div class="size-selector mb-3">
+              <button type="button" class="size-btn active" id="btnLiarsModeDeck" onclick="selectCreateLiarsMode('deck')">
+                🎴 Liar's Deck (Cards)
+              </button>
+              <button type="button" class="size-btn" id="btnLiarsModeDice" onclick="selectCreateLiarsMode('dice')">
+                🎲 Liar's Dice (Dice)
+              </button>
+            </div>
+            <input type="hidden" id="createLiarsMode" value="deck" />
+
+            <div id="deckVariantSection">
+              <label>Deck Mode Variant *</label>
+              <div class="size-selector">
+                <button type="button" class="size-btn active" id="btnVariantStandard" onclick="selectCreateLiarsVariant('standard')">Standard</button>
+                <button type="button" class="size-btn" id="btnVariantDevil" onclick="selectCreateLiarsVariant('devil')">😈 Devil</button>
+                <button type="button" class="size-btn" id="btnVariantChaos" onclick="selectCreateLiarsVariant('chaos')">🌀 Chaos</button>
+              </div>
+              <input type="hidden" id="createLiarsVariant" value="standard" />
+            </div>
           </div>
 
           <div class="form-group">
@@ -396,6 +539,40 @@
 
         <button class="btn btn-gold btn-lg btn-block mt-4" onclick="closeVictoryAndLeave()">
           Back to Lobby
+        </button>
+      </div>
+    </div>
+
+    <!-- Russian Roulette Suspense Modal -->
+    <div class="modal-overlay" id="rouletteModal">
+      <div class="modal-card roulette-card">
+        <div class="roulette-header">
+          <div class="revolver-icon-spin" id="revolverIcon">🔫</div>
+          <h2 id="rouletteTitle">RUSSIAN ROULETTE</h2>
+          <p id="rouletteMessage">Challenge Lost! Time to test your luck...</p>
+        </div>
+
+        <div class="revolver-cylinder-visual mt-3" id="revolverCylinder">
+          <!-- Rendered 6 chambers ring -->
+          <div class="cylinder-ring">
+            <div class="chamber-slot active" id="chamber-1">⚪</div>
+            <div class="chamber-slot" id="chamber-2">⚪</div>
+            <div class="chamber-slot" id="chamber-3">⚪</div>
+            <div class="chamber-slot" id="chamber-4">⚪</div>
+            <div class="chamber-slot" id="chamber-5">⚪</div>
+            <div class="chamber-slot" id="chamber-6">⚪</div>
+          </div>
+        </div>
+
+        <div class="revolver-chamber-display mt-3">
+          <span class="chamber-label">Chambers Remaining:</span>
+          <span class="chamber-value" id="rouletteChambersVal">6 / 6</span>
+        </div>
+
+        <div id="rouletteOutcomeBox" class="roulette-outcome-box mt-3" style="display: none;"></div>
+
+        <button id="btnTriggerPull" class="btn btn-danger btn-xl trigger-pull-btn mt-4 glow-effect" onclick="handleLiarsTriggerPull()">
+          🔫 PULL THE TRIGGER! 🔫
         </button>
       </div>
     </div>

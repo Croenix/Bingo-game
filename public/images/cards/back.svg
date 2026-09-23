@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="200" height="300">
+  <defs>
+    <linearGradient id="backBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <pattern id="cardPattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M10 0 L20 10 L10 20 L0 10 Z" fill="none" stroke="#d97706" stroke-width="0.8" opacity="0.4"/>
+    </pattern>
+    <linearGradient id="goldBackBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#78350f"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="300" rx="12" fill="url(#backBg)" stroke="url(#goldBackBorder)" stroke-width="4"/>
+  <rect x="6" y="6" width="188" height="288" rx="10" fill="url(#cardPattern)"/>
+  <rect x="12" y="12" width="176" height="276" rx="8" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+  <circle cx="100" cy="150" r="36" fill="#1e1b4b" stroke="#f59e0b" stroke-width="2"/>
+  <text x="100" y="160" font-size="36" text-anchor="middle">🎴</text>
+</svg>

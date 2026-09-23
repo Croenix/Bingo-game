@@ -60,6 +60,42 @@ function checkFormedSOS(grid, boardSize, row, col, activeUserId, activeUserName,
   return newSOSList;
 }
 
+function createLiarsDeckForPlayers(playerCount, variant = 'standard') {
+  const numPlayers = Math.max(1, playerCount);
+  const cardsPerPlayer = 10; // 10 cards per player as requested!
+  const totalCardsNeeded = numPlayers * cardsPerPlayer;
+
+  // Equal distribution among Kings, Queens, and Aces
+  const baseCountPerRank = Math.floor(totalCardsNeeded / 3);
+  let remainder = totalCardsNeeded % 3;
+
+  let kings = baseCountPerRank + (remainder > 0 ? 1 : 0);
+  let queens = baseCountPerRank + (remainder > 1 ? 1 : 0);
+  let aces = baseCountPerRank;
+
+  let deck = [];
+  for (let i = 0; i < kings; i++) deck.push('King');
+  for (let i = 0; i < queens; i++) deck.push('Queen');
+  for (let i = 0; i < aces; i++) deck.push('Ace');
+
+  // If Devil variant: exactly 1 Devil Card in the deck! Replace 1 random normal card
+  if (variant === 'devil' && deck.length > 0) {
+    const replaceIdx = Math.floor(Math.random() * deck.length);
+    deck[replaceIdx] = 'Devil';
+  } else if (variant === 'chaos' && deck.length > 0) {
+    const replaceIdx = Math.floor(Math.random() * deck.length);
+    deck[replaceIdx] = 'Chaos';
+  }
+
+  // Fisher-Yates Shuffle
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+
+  return deck;
+}
+
 function initializeGameData(room) {
   const firstPlayer = room.players[Math.floor(Math.random() * room.players.length)];
   room.status = 'playing';
@@ -84,6 +120,72 @@ function initializeGameData(room) {
       startedAt: Date.now(),
       winners: []
     };
+  } else if (room.gameType === 'liars_bar') {
+    const mode = room.liarsMode || 'deck';
+    const variant = room.liarsDeckVariant || 'standard';
+
+    if (mode === 'deck') {
+      const ranks = ['King', 'Queen', 'Ace'];
+      const tableRank = ranks[Math.floor(Math.random() * ranks.length)];
+      const fullDeck = createLiarsDeckForPlayers(room.players.length, variant);
+
+      const playerHands = {};
+      const revolvers = {};
+
+      room.players.forEach((p, idx) => {
+        // Deal 10 cards per player!
+        const hand = fullDeck.slice(idx * 10, (idx + 1) * 10);
+        playerHands[p.userId] = hand;
+        revolvers[p.userId] = {
+          chambersLeft: 6,
+          bulletIndex: Math.floor(Math.random() * 6) + 1,
+          currentChamber: 1,
+          isAlive: true
+        };
+      });
+
+      room.gameData = {
+        ...(room.gameData || {}),
+        gameType: 'liars_bar',
+        liarsMode: 'deck',
+        liarsDeckVariant: variant,
+        tableRank,
+        playerHands,
+        revolvers,
+        centerPile: [],
+        lastPlay: null,
+        pendingRoulette: null,
+        currentTurnUserId: firstPlayer.userId,
+        currentTurnName: firstPlayer.name,
+        startedAt: Date.now(),
+        winners: []
+      };
+    } else {
+      // Liar's Dice Mode
+      const playerDice = {};
+      const poisonDoses = {};
+      const alivePlayers = {};
+
+      room.players.forEach(p => {
+        playerDice[p.userId] = Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1);
+        poisonDoses[p.userId] = 0;
+        alivePlayers[p.userId] = true;
+      });
+
+      room.gameData = {
+        ...(room.gameData || {}),
+        gameType: 'liars_bar',
+        liarsMode: 'dice',
+        playerDice,
+        poisonDoses,
+        alivePlayers,
+        currentBid: null,
+        currentTurnUserId: firstPlayer.userId,
+        currentTurnName: firstPlayer.name,
+        startedAt: Date.now(),
+        winners: []
+      };
+    }
   } else {
     room.gameData = {
       ...(room.gameData || {}),
@@ -129,11 +231,15 @@ function registerRoomHandlers(io, socket) {
         rewardCoin = 0,
         rewardCurrencyType = 'coins',
         gameType: inputGameType = 'bingo',
-        boardSize: inputBoardSize = 5
+        boardSize: inputBoardSize = 5,
+        liarsMode: inputLiarsMode = 'deck',
+        liarsDeckVariant: inputLiarsVariant = 'standard'
       } = payload;
 
-      const gameType = ['bingo', 'sos'].includes(String(inputGameType).toLowerCase()) ? String(inputGameType).toLowerCase() : 'bingo';
+      const gameType = ['bingo', 'sos', 'liars_bar'].includes(String(inputGameType).toLowerCase()) ? String(inputGameType).toLowerCase() : 'bingo';
       const boardSize = [3, 5].includes(Number(inputBoardSize)) ? Number(inputBoardSize) : 5;
+      const liarsMode = ['deck', 'dice'].includes(String(inputLiarsMode).toLowerCase()) ? String(inputLiarsMode).toLowerCase() : 'deck';
+      const liarsDeckVariant = ['standard', 'devil', 'chaos'].includes(String(inputLiarsVariant).toLowerCase()) ? String(inputLiarsVariant).toLowerCase() : 'standard';
       if (!userId || !userName) {
         return sendError('create_room', 'userId and userName are required');
       }
@@ -218,6 +324,8 @@ function registerRoomHandlers(io, socket) {
         capacity: Math.min(Math.max(Number(capacity) || 4, 2), 10),
         gameType,
         boardSize,
+        liarsMode,
+        liarsDeckVariant,
         status: 'waiting',
         vivoxChannelUri,
         expiresAt,
@@ -471,6 +579,7 @@ function registerRoomHandlers(io, socket) {
           currentTurnName: firstPlayer.name,
           players: updatedRoom.players,
           startedAt: updatedRoom.gameData.startedAt,
+          gameData: updatedRoom.gameData,
           ...(updatedRoom.gameType === 'sos' ? {
             grid: updatedRoom.gameData.grid,
             scores: updatedRoom.gameData.scores,
@@ -518,6 +627,7 @@ function registerRoomHandlers(io, socket) {
         currentTurnName: firstPlayer.name,
         players: room.players,
         startedAt: room.gameData.startedAt,
+        gameData: room.gameData,
         ...(room.gameType === 'sos' ? {
           grid: room.gameData.grid,
           scores: room.gameData.scores,
@@ -696,6 +806,471 @@ function registerRoomHandlers(io, socket) {
     } catch (err) {
       console.error('Socket sos_make_move error:', err);
       sendError('sos_make_move', err.message || 'Failed to make SOS move');
+    }
+  });
+
+  // ==========================================================================
+  // Liar's Bar Socket Handlers (Liar's Deck & Liar's Dice)
+  // ==========================================================================
+
+  /**
+   * Event: liars_play_cards
+   * Payload: { roomId, userId, cardIndexes }
+   */
+  socket.on('liars_play_cards', async (payload = {}) => {
+    try {
+      const { roomId, userId, cardIndexes } = payload;
+      if (!roomId || !userId || !Array.isArray(cardIndexes) || cardIndexes.length === 0) {
+        return sendError('liars_play_cards', 'roomId, userId, and cardIndexes array are required');
+      }
+
+      if (cardIndexes.length > 3) {
+        return sendError('liars_play_cards', 'You can play at most 3 cards per turn');
+      }
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('liars_play_cards', 'Room not found');
+
+      if (room.gameType !== 'liars_bar' || (room.liarsMode && room.liarsMode !== 'deck')) {
+        return sendError('liars_play_cards', 'Not a Liar’s Deck room');
+      }
+
+      if (room.status !== 'playing') {
+        return sendError('liars_play_cards', 'Game is not currently active');
+      }
+
+      if (!room.gameData || room.gameData.currentTurnUserId !== formattedUserId) {
+        return sendError('liars_play_cards', "It's not your turn!");
+      }
+
+      const playerHand = (room.gameData.playerHands && room.gameData.playerHands[formattedUserId]) || [];
+      const playedCards = [];
+      const remainingHand = [...playerHand];
+
+      const sortedIndexes = [...cardIndexes].sort((a, b) => b - a);
+      for (const idx of sortedIndexes) {
+        if (idx < 0 || idx >= remainingHand.length) {
+          return sendError('liars_play_cards', 'Invalid card index selected');
+        }
+        playedCards.push(remainingHand[idx]);
+        remainingHand.splice(idx, 1);
+      }
+
+      room.gameData.playerHands[formattedUserId] = remainingHand;
+      if (!room.gameData.centerPile) room.gameData.centerPile = [];
+
+      const playerObj = room.players.find(p => p.userId === formattedUserId);
+      const playerName = playerObj ? playerObj.name : formattedUserId;
+
+      const playRecord = {
+        playerUserId: formattedUserId,
+        playerName,
+        cards: playedCards,
+        count: playedCards.length
+      };
+
+      room.gameData.centerPile.push(playRecord);
+      room.gameData.lastPlay = playRecord;
+
+      const revolvers = room.gameData.revolvers || {};
+      const alivePlayers = room.players.filter(p => revolvers[p.userId] && revolvers[p.userId].isAlive);
+      
+      const currIdx = alivePlayers.findIndex(p => p.userId === formattedUserId);
+      const nextPlayer = alivePlayers[(currIdx + 1) % alivePlayers.length];
+
+      room.gameData.currentTurnUserId = nextPlayer.userId;
+      room.gameData.currentTurnName = nextPlayer.name;
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('liars_cards_played', {
+        roomId: formattedRoomId,
+        playedBy: { userId: formattedUserId, name: playerName },
+        count: playedCards.length,
+        remainingHandCount: remainingHand.length,
+        nextTurnUserId: nextPlayer.userId,
+        nextTurnName: nextPlayer.name,
+        tableRank: room.gameData.tableRank
+      });
+    } catch (err) {
+      console.error('Socket liars_play_cards error:', err);
+      sendError('liars_play_cards', err.message || 'Failed to play cards');
+    }
+  });
+
+  /**
+   * Event: liars_call_liar_deck (Challenge preceding player's played cards)
+   * Payload: { roomId, userId }
+   */
+  socket.on('liars_call_liar_deck', async (payload = {}) => {
+    try {
+      const { roomId, userId } = payload;
+      if (!roomId || !userId) return sendError('liars_call_liar_deck', 'roomId and userId are required');
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('liars_call_liar_deck', 'Room not found');
+
+      if (room.gameType !== 'liars_bar' || (room.liarsMode || (room.gameData && room.gameData.liarsMode) || 'deck') !== 'deck') {
+        return sendError('liars_call_liar_deck', 'Not a Liar’s Deck room');
+      }
+
+      if (room.status !== 'playing') {
+        return sendError('liars_call_liar_deck', 'Game is not active');
+      }
+
+      const lastPlay = room.gameData.lastPlay;
+      if (!lastPlay || !lastPlay.cards || lastPlay.cards.length === 0) {
+        return sendError('liars_call_liar_deck', 'No cards played yet to challenge!');
+      }
+
+      const tableRank = room.gameData.tableRank;
+      const challengerObj = room.players.find(p => p.userId === formattedUserId);
+      const challengerName = challengerObj ? challengerObj.name : formattedUserId;
+
+      const isValidCard = (card) => card === tableRank || card === 'Joker' || card === 'Chaos' || card === 'Devil';
+      const isTruthful = lastPlay.cards.every(c => isValidCard(c));
+
+      const losingUserId = isTruthful ? formattedUserId : lastPlay.playerUserId;
+      const losingPlayerObj = room.players.find(p => p.userId === losingUserId);
+      const losingUserName = losingPlayerObj ? losingPlayerObj.name : losingUserId;
+
+      const isDevilPlayed = lastPlay.cards.includes('Devil');
+
+      room.gameData.pendingRoulette = {
+        losingUserId,
+        losingUserName,
+        isDevilPlayed,
+        challengerUserId: formattedUserId,
+        challengerName,
+        accusedUserId: lastPlay.playerUserId,
+        accusedName: lastPlay.playerName,
+        revealedCards: lastPlay.cards,
+        isTruthful
+      };
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('liars_challenge_resolved', {
+        roomId: formattedRoomId,
+        challenger: { userId: formattedUserId, name: challengerName },
+        accused: { userId: lastPlay.playerUserId, name: lastPlay.playerName },
+        revealedCards: lastPlay.cards,
+        tableRank,
+        isTruthful,
+        losingUserId,
+        losingUserName,
+        isDevilPlayed
+      });
+    } catch (err) {
+      console.error('Socket liars_call_liar_deck error:', err);
+      sendError('liars_call_liar_deck', err.message || 'Failed to process challenge');
+    }
+  });
+
+  /**
+   * Event: liars_trigger_roulette
+   * Payload: { roomId, userId }
+   */
+  socket.on('liars_trigger_roulette', async (payload = {}) => {
+    try {
+      const { roomId, userId } = payload;
+      if (!roomId || !userId) return sendError('liars_trigger_roulette', 'roomId and userId are required');
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('liars_trigger_roulette', 'Room not found');
+
+      if (!room.gameData || !room.gameData.pendingRoulette) {
+        return sendError('liars_trigger_roulette', 'No pending roulette trigger pull');
+      }
+
+      const pending = room.gameData.pendingRoulette;
+      if (pending.losingUserId !== formattedUserId && !pending.isDevilPlayed) {
+        return sendError('liars_trigger_roulette', 'Only the losing player must pull the trigger');
+      }
+
+      const revolvers = room.gameData.revolvers || {};
+      const rev = revolvers[formattedUserId];
+      if (!rev || !rev.isAlive) {
+        return sendError('liars_trigger_roulette', 'Player is already eliminated');
+      }
+
+      const isLiveRound = (rev.currentChamber === rev.bulletIndex);
+      rev.chambersLeft = Math.max(0, rev.chambersLeft - 1);
+      rev.currentChamber++;
+
+      let isEliminated = false;
+      if (isLiveRound) {
+        rev.isAlive = false;
+        isEliminated = true;
+      }
+
+      room.gameData.revolvers = revolvers;
+      room.gameData.pendingRoulette = null;
+
+      const alivePlayers = room.players.filter(p => revolvers[p.userId] && revolvers[p.userId].isAlive);
+
+      if (alivePlayers.length <= 1) {
+        room.status = 'finished';
+        const winner = alivePlayers[0] || room.players[0];
+        room.gameData.winners = [{ userId: winner.userId, name: winner.name }];
+        room.markModified('gameData');
+        await room.save();
+
+        io.to(formattedRoomId).emit('liars_roulette_result', {
+          roomId: formattedRoomId,
+          userId: formattedUserId,
+          isLiveRound,
+          isEliminated,
+          chambersLeft: rev.chambersLeft,
+          isGameOver: true
+        });
+
+        io.to(formattedRoomId).emit('liars_game_over', {
+          roomId: formattedRoomId,
+          winners: [{ userId: winner.userId, name: winner.name }],
+          revolvers
+        });
+        return;
+      }
+
+      const ranks = ['King', 'Queen', 'Ace'];
+      const tableRank = ranks[Math.floor(Math.random() * ranks.length)];
+      const fullDeck = createLiarsDeckForPlayers(alivePlayers.length, room.liarsDeckVariant || 'standard');
+
+      alivePlayers.forEach((p, idx) => {
+        const hand = fullDeck.slice(idx * 10, (idx + 1) * 10);
+        room.gameData.playerHands[p.userId] = hand;
+      });
+
+      room.gameData.tableRank = tableRank;
+      room.gameData.centerPile = [];
+      room.gameData.lastPlay = null;
+
+      const firstAlivePlayer = alivePlayers[Math.floor(Math.random() * alivePlayers.length)];
+      room.gameData.currentTurnUserId = firstAlivePlayer.userId;
+      room.gameData.currentTurnName = firstAlivePlayer.name;
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('liars_roulette_result', {
+        roomId: formattedRoomId,
+        userId: formattedUserId,
+        isLiveRound,
+        isEliminated,
+        chambersLeft: rev.chambersLeft,
+        isGameOver: false,
+        newRound: {
+          tableRank,
+          currentTurnUserId: firstAlivePlayer.userId,
+          currentTurnName: firstAlivePlayer.name,
+          playerHands: room.gameData.playerHands
+        }
+      });
+    } catch (err) {
+      console.error('Socket liars_trigger_roulette error:', err);
+      sendError('liars_trigger_roulette', err.message || 'Failed to trigger roulette');
+    }
+  });
+
+  /**
+   * Event: liars_place_bid (Liar's Dice mode)
+   * Payload: { roomId, userId, quantity, face }
+   */
+  socket.on('liars_place_bid', async (payload = {}) => {
+    try {
+      const { roomId, userId, quantity, face } = payload;
+      if (!roomId || !userId || !quantity || !face) {
+        return sendError('liars_place_bid', 'roomId, userId, quantity, and face are required');
+      }
+
+      const q = Number(quantity);
+      const f = Number(face);
+
+      if (isNaN(q) || q < 1 || isNaN(f) || f < 1 || f > 6) {
+        return sendError('liars_place_bid', 'Invalid quantity or face value (1-6)');
+      }
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('liars_place_bid', 'Room not found');
+
+      if (room.gameType !== 'liars_bar' || room.gameData.liarsMode !== 'dice') {
+        return sendError('liars_place_bid', 'Not a Liar’s Dice room');
+      }
+
+      if (room.status !== 'playing') {
+        return sendError('liars_place_bid', 'Game is not active');
+      }
+
+      if (room.gameData.currentTurnUserId !== formattedUserId) {
+        return sendError('liars_place_bid', "It's not your turn!");
+      }
+
+      const currentBid = room.gameData.currentBid;
+      if (currentBid) {
+        const isHigher = q > currentBid.quantity || (q === currentBid.quantity && f > currentBid.face);
+        if (!isHigher) {
+          return sendError('liars_place_bid', 'Bid must be higher than current bid!');
+        }
+      }
+
+      const playerObj = room.players.find(p => p.userId === formattedUserId);
+      const playerName = playerObj ? playerObj.name : formattedUserId;
+
+      const newBid = { quantity: q, face: f, bidderUserId: formattedUserId, bidderName: playerName };
+      room.gameData.currentBid = newBid;
+
+      const alivePlayersMap = room.gameData.alivePlayers || {};
+      const aliveList = room.players.filter(p => alivePlayersMap[p.userId] !== false);
+      const currIdx = aliveList.findIndex(p => p.userId === formattedUserId);
+      const nextPlayer = aliveList[(currIdx + 1) % aliveList.length];
+
+      room.gameData.currentTurnUserId = nextPlayer.userId;
+      room.gameData.currentTurnName = nextPlayer.name;
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('liars_bid_placed', {
+        roomId: formattedRoomId,
+        bid: newBid,
+        nextTurnUserId: nextPlayer.userId,
+        nextTurnName: nextPlayer.name
+      });
+    } catch (err) {
+      console.error('Socket liars_place_bid error:', err);
+      sendError('liars_place_bid', err.message || 'Failed to place bid');
+    }
+  });
+
+  /**
+   * Event: liars_call_liar_dice (Liar's Dice challenge)
+   * Payload: { roomId, userId }
+   */
+  socket.on('liars_call_liar_dice', async (payload = {}) => {
+    try {
+      const { roomId, userId } = payload;
+      if (!roomId || !userId) return sendError('liars_call_liar_dice', 'roomId and userId are required');
+
+      const formattedUserId = String(userId).trim().toUpperCase();
+      const formattedRoomId = String(roomId).toUpperCase().trim();
+      const room = await Room.findOne({ roomId: formattedRoomId });
+      if (!room) return sendError('liars_call_liar_dice', 'Room not found');
+
+      if (room.gameType !== 'liars_bar' || room.gameData.liarsMode !== 'dice') {
+        return sendError('liars_call_liar_dice', 'Not a Liar’s Dice room');
+      }
+
+      if (room.status !== 'playing') {
+        return sendError('liars_call_liar_dice', 'Game is not active');
+      }
+
+      const currentBid = room.gameData.currentBid;
+      if (!currentBid) {
+        return sendError('liars_call_liar_dice', 'No bid has been placed yet to challenge!');
+      }
+
+      const playerDice = room.gameData.playerDice || {};
+      const alivePlayersMap = room.gameData.alivePlayers || {};
+
+      let actualCount = 0;
+      Object.keys(playerDice).forEach(uid => {
+        if (alivePlayersMap[uid] !== false) {
+          const dice = playerDice[uid] || [];
+          dice.forEach(d => {
+            if (d === currentBid.face || (d === 1 && currentBid.face !== 1)) {
+              actualCount++;
+            }
+          });
+        }
+      });
+
+      const isTruthful = actualCount >= currentBid.quantity;
+      const losingUserId = isTruthful ? formattedUserId : currentBid.bidderUserId;
+
+      const poisonDoses = room.gameData.poisonDoses || {};
+      poisonDoses[losingUserId] = (poisonDoses[losingUserId] || 0) + 1;
+
+      let isEliminated = false;
+      if (poisonDoses[losingUserId] >= 2) {
+        alivePlayersMap[losingUserId] = false;
+        isEliminated = true;
+      }
+
+      room.gameData.poisonDoses = poisonDoses;
+      room.gameData.alivePlayers = alivePlayersMap;
+
+      const aliveList = room.players.filter(p => alivePlayersMap[p.userId] !== false);
+
+      if (aliveList.length <= 1) {
+        room.status = 'finished';
+        const winner = aliveList[0] || room.players[0];
+        room.gameData.winners = [{ userId: winner.userId, name: winner.name }];
+        room.markModified('gameData');
+        await room.save();
+
+        io.to(formattedRoomId).emit('liars_dice_resolved', {
+          roomId: formattedRoomId,
+          bid: currentBid,
+          playerDice,
+          actualCount,
+          isTruthful,
+          losingUserId,
+          poisonDoses,
+          isEliminated,
+          isGameOver: true
+        });
+
+        io.to(formattedRoomId).emit('liars_game_over', {
+          roomId: formattedRoomId,
+          winners: [{ userId: winner.userId, name: winner.name }],
+          playerDice,
+          poisonDoses
+        });
+        return;
+      }
+
+      aliveList.forEach(p => {
+        playerDice[p.userId] = Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1);
+      });
+
+      const firstAlive = aliveList[Math.floor(Math.random() * aliveList.length)];
+      room.gameData.currentBid = null;
+      room.gameData.currentTurnUserId = firstAlive.userId;
+      room.gameData.currentTurnName = firstAlive.name;
+
+      room.markModified('gameData');
+      await room.save();
+
+      io.to(formattedRoomId).emit('liars_dice_resolved', {
+        roomId: formattedRoomId,
+        bid: currentBid,
+        playerDice,
+        actualCount,
+        isTruthful,
+        losingUserId,
+        poisonDoses,
+        isEliminated,
+        isGameOver: false,
+        newRound: {
+          currentTurnUserId: firstAlive.userId,
+          currentTurnName: firstAlive.name,
+          playerDice
+        }
+      });
+    } catch (err) {
+      console.error('Socket liars_call_liar_dice error:', err);
+      sendError('liars_call_liar_dice', err.message || 'Failed to challenge dice bid');
     }
   });
 

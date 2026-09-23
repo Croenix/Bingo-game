@@ -78,13 +78,23 @@ const roomSchema = new mongoose.Schema(
     },
     gameType: {
       type: String,
-      enum: ['bingo', 'sos'],
+      enum: ['bingo', 'sos', 'liars_bar'],
       default: 'bingo'
     },
     boardSize: {
       type: Number,
       enum: [3, 5],
       default: 5
+    },
+    liarsMode: {
+      type: String,
+      enum: ['deck', 'dice'],
+      default: 'deck'
+    },
+    liarsDeckVariant: {
+      type: String,
+      enum: ['standard', 'devil', 'chaos'],
+      default: 'standard'
     },
     gameData: {
       type: mongoose.Schema.Types.Mixed,

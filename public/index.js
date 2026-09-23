@@ -227,6 +227,76 @@ const SoundFX = {
     } catch (e) {
       console.warn('SoundFX playVictory error:', e);
     }
+  },
+
+  // 7. Revolver Cylinder Spin (rapid mechanical clicks)
+  playGunSpin() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const now = this.ctx.currentTime;
+      for (let i = 0; i < 8; i++) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1200 + Math.random() * 400, now + i * 0.05);
+        gain.gain.setValueAtTime(0.15, now + i * 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.05 + 0.02);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now + i * 0.05);
+        osc.stop(now + i * 0.05 + 0.02);
+      }
+    } catch (e) {
+      console.warn('SoundFX playGunSpin error:', e);
+    }
+  },
+
+  // 8. Revolver Dry Click (blank chamber trigger pull)
+  playGunClick() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(800, now);
+      osc.frequency.exponentialRampToValueAtTime(150, now + 0.04);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.04);
+    } catch (e) {
+      console.warn('SoundFX playGunClick error:', e);
+    }
+  },
+
+  // 9. Revolver BANG! (live round firing explosion)
+  playGunBang() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(180, now);
+      osc.frequency.exponentialRampToValueAtTime(30, now + 0.4);
+      gain.gain.setValueAtTime(0.8, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } catch (e) {
+      console.warn('SoundFX playGunBang error:', e);
+    }
   }
 };
 
@@ -530,10 +600,15 @@ async function fetchRooms() {
     }
 
     container.innerHTML = rooms.map(r => {
-      const isSOS = r.gameType === 'sos';
-      const gameBadge = isSOS
-        ? `<span class="badge-game-type badge-sos">🔤 SOS (${r.boardSize || 5}x${r.boardSize || 5})</span>`
-        : `<span class="badge-game-type badge-bingo">🎲 BINGO</span>`;
+      let gameBadge = '';
+      if (r.gameType === 'sos') {
+        gameBadge = `<span class="badge-game-type badge-sos">🔤 SOS (${r.boardSize || 5}x${r.boardSize || 5})</span>`;
+      } else if (r.gameType === 'liars_bar') {
+        const modeLabel = r.liarsMode === 'dice' ? 'Dice' : 'Deck';
+        gameBadge = `<span class="badge-game-type badge-liars">🍷 LIAR'S BAR (${modeLabel})</span>`;
+      } else {
+        gameBadge = `<span class="badge-game-type badge-bingo">🎲 BINGO</span>`;
+      }
 
       return `
         <div class="room-card">
@@ -615,6 +690,9 @@ function initSocket() {
       if (data.players) currentRoom.players = data.players;
       if (data.gameType) currentRoom.gameType = data.gameType;
       if (data.boardSize) currentRoom.boardSize = data.boardSize;
+      if (data.gameData) {
+        currentRoom.gameData = data.gameData;
+      }
       if (data.grid) {
         if (!currentRoom.gameData) currentRoom.gameData = {};
         currentRoom.gameData.grid = data.grid;
@@ -632,6 +710,8 @@ function initSocket() {
       const grid = data.grid || Array(size).fill(null).map(() => Array(size).fill(''));
       renderSOSBoard(grid, size, data.completedSOS || []);
       renderSOSScoreboard();
+    } else if (currentRoom && currentRoom.gameType === 'liars_bar') {
+      renderLiarsView();
     } else {
       renderBingoBoard();
     }
@@ -700,6 +780,251 @@ function initSocket() {
     renderVictoryLeaderboard(leaderboard);
     openModal('victoryModal');
     if (window.confetti) confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
+  });
+
+  socket.on('liars_cards_played', (data) => {
+    const { playedBy, count, nextTurnUserId: nextId, nextTurnName: nextName, tableRank } = data;
+    currentTurnUserId = nextId;
+    currentTurnName = nextName;
+
+    if (currentRoom && currentRoom.gameData) {
+      currentRoom.gameData.tableRank = tableRank;
+      currentRoom.gameData.currentTurnUserId = nextId;
+      currentTurnName = nextName;
+
+      if (!currentRoom.gameData.centerPile) currentRoom.gameData.centerPile = [];
+      const playRecord = { count, playerName: playedBy.name, playerUserId: playedBy.userId };
+      currentRoom.gameData.centerPile.push(playRecord);
+      currentRoom.gameData.lastPlay = playRecord;
+    }
+
+    showToast(`🎴 ${playedBy.name} played ${count} card(s) face-down!`, 'info');
+    SoundFX.playTileClick();
+    updateTurnStateUI();
+    renderLiarsView();
+
+    if (currentUser && currentUser.userId === currentTurnUserId) {
+      SoundFX.playYourTurn();
+      showToast(`IT IS YOUR TURN! Play 1-3 cards or Call Liar! 🤥`, 'success');
+    }
+  });
+
+  socket.on('liars_challenge_resolved', (data) => {
+    const { challenger, accused, revealedCards, tableRank, isTruthful, losingUserId, losingUserName, isDevilPlayed } = data;
+    const isLosingMe = currentUser && currentUser.userId === losingUserId;
+
+    // 1. Reveal Cards on Saloon Table FIRST
+    const revContainer = document.getElementById('revealedCardsContainer');
+    const revFlex = document.getElementById('revealedCardsFlex');
+    const revBadge = document.getElementById('revealResultBadge');
+    const revHeader = document.getElementById('revealHeaderText');
+
+    const cardImages = {
+      King: '/images/cards/king.jpg',
+      Queen: '/images/cards/queen.jpg',
+      Ace: '/images/cards/ace.jpg',
+      Joker: '/images/cards/joker.svg',
+      Devil: '/images/cards/devil.svg',
+      Chaos: '/images/cards/joker.svg'
+    };
+
+    if (revHeader) revHeader.textContent = `🔍 ${challenger.name} CALLED LIAR ON ${accused.name}!`;
+
+    if (revFlex) {
+      revFlex.innerHTML = (revealedCards || []).map(card => {
+        const imgUrl = cardImages[card] || '/images/cards/joker.svg';
+        return `
+          <div class="reveal-card-item">
+            <img src="${imgUrl}" class="card-graphic-img" alt="${card}" />
+          </div>
+        `;
+      }).join('');
+    }
+
+    if (revBadge) {
+      if (isTruthful) {
+        revBadge.className = 'reveal-result-badge truth';
+        revBadge.textContent = `✅ TRUTHFUL! ${accused.name} played valid cards! ${losingUserName} lost the challenge!`;
+      } else {
+        revBadge.className = 'reveal-result-badge bluff';
+        revBadge.textContent = `❌ BLUFF! ${accused.name} lied! ${losingUserName} lost the challenge!`;
+      }
+    }
+
+    if (revContainer) revContainer.style.display = 'block';
+
+    showToast(`🤥 ${challenger.name} CALLED LIAR on ${accused.name}! Revealed: ${revealedCards.join(', ')}`, 'warning');
+    SoundFX.playTileClick();
+
+    // 2. Pause 2.8s so all players see the revealed cards and result before revolver modal
+    setTimeout(() => {
+      if (revContainer) revContainer.style.display = 'none';
+
+      // Sound FX: Spin Cylinder
+      SoundFX.playGunSpin();
+
+      const outcomeBox = document.getElementById('rouletteOutcomeBox');
+      if (outcomeBox) outcomeBox.style.display = 'none';
+
+      // Render 6-chamber cylinder active status
+      const revolvers = (currentRoom && currentRoom.gameData && currentRoom.gameData.revolvers) || {};
+      const losingRev = revolvers[losingUserId] || { chambersLeft: 6 };
+      const chambersLeft = losingRev.chambersLeft || 6;
+      const chambersValEl = document.getElementById('rouletteChambersVal');
+      if (chambersValEl) chambersValEl.textContent = `${chambersLeft} / 6`;
+
+      for (let i = 1; i <= 6; i++) {
+        const chamberEl = document.getElementById(`chamber-${i}`);
+        if (chamberEl) {
+          chamberEl.className = 'chamber-slot';
+          if (i <= (6 - chambersLeft)) {
+            chamberEl.classList.add('empty');
+            chamberEl.textContent = '⚪';
+          } else if (i === (7 - chambersLeft)) {
+            chamberEl.classList.add('active');
+            chamberEl.textContent = '❓';
+          } else {
+            chamberEl.textContent = '⚪';
+          }
+        }
+      }
+
+      if (isLosingMe) {
+        document.getElementById('rouletteTitle').textContent = '⚠️ CHALLENGE LOST!';
+        document.getElementById('rouletteMessage').textContent = 'You lost the challenge! PULL THE TRIGGER!';
+        document.getElementById('btnTriggerPull').style.display = 'inline-block';
+      } else {
+        document.getElementById('rouletteTitle').textContent = `🔫 ${losingUserName}'S TURN`;
+        document.getElementById('rouletteMessage').textContent = `${losingUserName} lost the challenge and is pulling the trigger...`;
+        document.getElementById('btnTriggerPull').style.display = 'none';
+      }
+
+      openModal('rouletteModal');
+      renderLiarsView();
+    }, 2800);
+  });
+
+  socket.on('liars_roulette_result', (data) => {
+    const { userId: playerUid, isLiveRound, isEliminated, chambersLeft, isGameOver, newRound } = data;
+    const playerObj = currentRoom ? currentRoom.players.find(p => p.userId === playerUid) : null;
+    const pName = playerObj ? playerObj.name : playerUid;
+
+    const outcomeBox = document.getElementById('rouletteOutcomeBox');
+    const btnTrigger = document.getElementById('btnTriggerPull');
+    if (btnTrigger) btnTrigger.style.display = 'none';
+
+    if (isLiveRound) {
+      SoundFX.playGunBang();
+      if (outcomeBox) {
+        outcomeBox.className = 'roulette-outcome-box bang';
+        outcomeBox.textContent = `💥 BANG! LIVE ROUND FIRED! ${pName} IS ELIMINATED! 💀`;
+        outcomeBox.style.display = 'block';
+      }
+      showToast(`💥 BANG! ${pName} pulled the trigger and got a LIVE ROUND! ELIMINATED! ☠️`, 'error');
+    } else {
+      SoundFX.playGunClick();
+      if (outcomeBox) {
+        outcomeBox.className = 'roulette-outcome-box blank';
+        outcomeBox.textContent = `⚪ *CLICK* ... BLANK CHAMBER! ${pName} SURVIVED!`;
+        outcomeBox.style.display = 'block';
+      }
+      showToast(`🔫 *CLICK* ... BLANK! ${pName} survived! (${chambersLeft} chambers left)`, 'success');
+    }
+
+    setTimeout(() => {
+      closeModal('rouletteModal');
+
+      if (newRound) {
+        currentTurnUserId = newRound.currentTurnUserId;
+        currentTurnName = newRound.currentTurnName;
+        if (currentRoom && currentRoom.gameData) {
+          currentRoom.gameData.tableRank = newRound.tableRank;
+          currentRoom.gameData.playerHands = newRound.playerHands;
+          currentRoom.gameData.centerPile = [];
+          currentRoom.gameData.lastPlay = null;
+        }
+      }
+
+      updateTurnStateUI();
+      renderLiarsView();
+    }, 1500);
+  });
+
+  socket.on('liars_bid_placed', (data) => {
+    const { bid, nextTurnUserId: nextId, nextTurnName: nextName } = data;
+    currentTurnUserId = nextId;
+    currentTurnName = nextName;
+
+    if (currentRoom && currentRoom.gameData) {
+      currentRoom.gameData.currentBid = bid;
+    }
+
+    showToast(`🎲 ${bid.bidderName} bid: ${bid.quantity} x ${bid.face}s`, 'info');
+    SoundFX.playTileClick();
+    updateTurnStateUI();
+    renderLiarsView();
+
+    if (currentUser && currentUser.userId === currentTurnUserId) {
+      SoundFX.playYourTurn();
+      showToast(`IT IS YOUR TURN! Raise bid or Call Liar! 🤥`, 'success');
+    }
+  });
+
+  socket.on('liars_dice_resolved', (data) => {
+    const { bid, playerDice, actualCount, isTruthful, losingUserId, poisonDoses, isEliminated, isGameOver, newRound } = data;
+    const losingObj = currentRoom ? currentRoom.players.find(p => p.userId === losingUserId) : null;
+    const lName = losingObj ? losingObj.name : losingUserId;
+
+    if (currentRoom && currentRoom.gameData) {
+      currentRoom.gameData.playerDice = playerDice;
+      currentRoom.gameData.poisonDoses = poisonDoses;
+    }
+
+    if (isTruthful) {
+      showToast(`✅ Bid of ${bid.quantity}x${bid.face}s was SAFE! Actual count: ${actualCount}. ${lName} drinks poison! 🍷`, 'warning');
+    } else {
+      showToast(`❌ Bid of ${bid.quantity}x${bid.face}s was A BLUFF! Actual count: ${actualCount}. ${lName} drinks poison! 🍷`, 'error');
+    }
+
+    if (isEliminated) {
+      showToast(`☠️ ${lName} drank 2 doses of poison and is ELIMINATED!`, 'error');
+    }
+
+    if (newRound) {
+      currentTurnUserId = newRound.currentTurnUserId;
+      currentTurnName = newRound.currentTurnName;
+      if (currentRoom && currentRoom.gameData) {
+        currentRoom.gameData.playerDice = newRound.playerDice;
+        currentRoom.gameData.currentBid = null;
+      }
+    }
+
+    updateTurnStateUI();
+    renderLiarsView();
+  });
+
+  socket.on('liars_game_over', (data) => {
+    roomStatus = 'finished';
+    const { winners } = data;
+    SoundFX.playVictory();
+
+    const isWinner = winners.some(w => currentUser && w.userId === currentUser.userId);
+    const winnerNames = winners.map(w => w.name).join(' & ');
+
+    document.getElementById('victoryTitle').textContent = isWinner ? `🏆 YOU ARE THE SURVIVOR!` : `🏆 MATCH RESULTS`;
+    document.getElementById('victoryMessage').textContent = `${winnerNames} is the LAST STANDING SURVIVOR of Liar's Bar! 🎉`;
+
+    const leaderboard = (currentRoom?.players || []).map((p, idx) => ({
+      userId: p.userId,
+      name: p.name,
+      profileImageUrl: p.profileImageUrl,
+      position: winners.some(w => w.userId === p.userId) ? 1 : (idx + 2),
+      timeDisplay: 'Survivor'
+    }));
+
+    renderVictoryLeaderboard(leaderboard);
+    openModal('victoryModal');
+    if (window.confetti) confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } });
   });
 
   socket.on('number_picked', (data) => {
@@ -838,20 +1163,29 @@ function handleRoomJoinedOrCreated(data) {
   document.getElementById('gameRoomCode').textContent = currentRoom.roomId;
 
   const isSOS = currentRoom.gameType === 'sos';
+  const isLiars = currentRoom.gameType === 'liars_bar';
   const bingoArea = document.getElementById('bingoArea');
   const sosArea = document.getElementById('sosArea');
+  const liarsArea = document.getElementById('liarsArea');
 
   if (isSOS) {
     bingoArea.style.display = 'none';
     sosArea.style.display = 'block';
+    if (liarsArea) liarsArea.style.display = 'none';
     const size = currentRoom.boardSize || 5;
     const grid = (gameData && gameData.grid) || Array(size).fill(null).map(() => Array(size).fill(''));
     const completedSOS = (gameData && gameData.completedSOS) || [];
     renderSOSBoard(grid, size, completedSOS);
     renderSOSScoreboard();
+  } else if (isLiars) {
+    bingoArea.style.display = 'none';
+    sosArea.style.display = 'none';
+    if (liarsArea) liarsArea.style.display = 'block';
+    renderLiarsView();
   } else {
     bingoArea.style.display = 'block';
     sosArea.style.display = 'none';
+    if (liarsArea) liarsArea.style.display = 'none';
     updateBingoLinesUI();
     renderBingoBoard();
   }
@@ -874,8 +1208,12 @@ function updateTurnStateUI() {
   const statusText = document.getElementById('gameStatusText');
   const sosTurnText = document.getElementById('sosTurnText');
   const sosTurnBanner = document.getElementById('sosTurnBanner');
+  const liarsTurnText = document.getElementById('liarsTurnText');
+  const liarsTurnBanner = document.getElementById('liarsTurnBanner');
+
   const isHost = currentUser && currentRoom && (currentUser.userId === currentRoom.creatorId);
   const isSOS = currentRoom && currentRoom.gameType === 'sos';
+  const isLiars = currentRoom && currentRoom.gameType === 'liars_bar';
 
   if (roomStatus === 'waiting') {
     if (isHost) {
@@ -887,27 +1225,41 @@ function updateTurnStateUI() {
     }
     if (sosTurnText) sosTurnText.textContent = 'Waiting for game to start...';
     if (sosTurnBanner) sosTurnBanner.classList.remove('your-turn');
+    if (liarsTurnText) liarsTurnText.textContent = 'Waiting for game to start...';
+    if (liarsTurnBanner) liarsTurnBanner.classList.remove('your-turn');
   } else if (roomStatus === 'playing') {
     hostBtn.style.display = 'none';
     const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+    const mode = (currentRoom && currentRoom.liarsMode) || 'deck';
+
     if (isMyTurn) {
-      statusText.textContent = isSOS ? '🕹️ YOUR TURN! Select S or O and tap any grid box!' : '🕹️ YOUR TURN! Click any number on your board to pick it!';
+      statusText.textContent = isSOS ? '🕹️ YOUR TURN! Select S or O and tap any grid box!' : (isLiars ? '🕹️ YOUR TURN! Play cards, bid or call Liar!' : '🕹️ YOUR TURN! Click any number on your board to pick it!');
       if (sosTurnText) sosTurnText.textContent = '🕹️ YOUR TURN! Tap an empty grid cell to place ' + selectedSOSLetter;
       if (sosTurnBanner) sosTurnBanner.classList.add('your-turn');
+
+      if (liarsTurnText) liarsTurnText.textContent = mode === 'deck' ? '🕹️ YOUR TURN! Select 1-3 cards to play or Call Liar! 🤥' : '🕹️ YOUR TURN! Raise bid or Call Liar! 🎲';
+      if (liarsTurnBanner) liarsTurnBanner.classList.add('your-turn');
     } else {
       statusText.textContent = `⏳ Waiting for ${currentTurnName}'s turn...`;
       if (sosTurnText) sosTurnText.textContent = `⏳ Waiting for ${currentTurnName}'s turn...`;
       if (sosTurnBanner) sosTurnBanner.classList.remove('your-turn');
+
+      if (liarsTurnText) liarsTurnText.textContent = `⏳ Waiting for ${currentTurnName}'s turn...`;
+      if (liarsTurnBanner) liarsTurnBanner.classList.remove('your-turn');
     }
   } else if (roomStatus === 'finished') {
     hostBtn.style.display = 'none';
     statusText.textContent = '🏆 Game Finished!';
     if (sosTurnText) sosTurnText.textContent = '🏆 Game Finished!';
     if (sosTurnBanner) sosTurnBanner.classList.remove('your-turn');
+
+    if (liarsTurnText) liarsTurnText.textContent = '🏆 Game Finished!';
+    if (liarsTurnBanner) liarsTurnBanner.classList.remove('your-turn');
   }
 
   renderPlayersStrip();
   if (isSOS) renderSOSScoreboard();
+  if (isLiars) renderLiarsRoster();
 }
 
 function renderBingoBoard() {
@@ -1103,17 +1455,58 @@ function selectCreateGameType(type) {
   document.getElementById('createGameType').value = type;
   const btnBingo = document.getElementById('btnGameBingo');
   const btnSOS = document.getElementById('btnGameSOS');
-  const sizeGroup = document.getElementById('sosSizeGroup');
+  const btnLiars = document.getElementById('btnGameLiars');
+  const sosGroup = document.getElementById('sosSizeGroup');
+  const liarsGroup = document.getElementById('liarsOptionsGroup');
+
+  btnBingo.classList.remove('active');
+  btnSOS.classList.remove('active');
+  if (btnLiars) btnLiars.classList.remove('active');
+
+  sosGroup.style.display = 'none';
+  if (liarsGroup) liarsGroup.style.display = 'none';
 
   if (type === 'sos') {
-    btnBingo.classList.remove('active');
     btnSOS.classList.add('active');
-    sizeGroup.style.display = 'block';
+    sosGroup.style.display = 'block';
+  } else if (type === 'liars_bar') {
+    if (btnLiars) btnLiars.classList.add('active');
+    if (liarsGroup) liarsGroup.style.display = 'block';
   } else {
     btnBingo.classList.add('active');
-    btnSOS.classList.remove('active');
-    sizeGroup.style.display = 'none';
   }
+}
+
+function selectCreateLiarsMode(mode) {
+  document.getElementById('createLiarsMode').value = mode;
+  const btnDeck = document.getElementById('btnLiarsModeDeck');
+  const btnDice = document.getElementById('btnLiarsModeDice');
+  const variantSec = document.getElementById('deckVariantSection');
+
+  if (mode === 'dice') {
+    btnDeck.classList.remove('active');
+    btnDice.classList.add('active');
+    if (variantSec) variantSec.style.display = 'none';
+  } else {
+    btnDeck.classList.add('active');
+    btnDice.classList.remove('active');
+    if (variantSec) variantSec.style.display = 'block';
+  }
+}
+
+function selectCreateLiarsVariant(variant) {
+  document.getElementById('createLiarsVariant').value = variant;
+  const btnStd = document.getElementById('btnVariantStandard');
+  const btnDev = document.getElementById('btnVariantDevil');
+  const btnCha = document.getElementById('btnVariantChaos');
+
+  if (btnStd) btnStd.classList.remove('active');
+  if (btnDev) btnDev.classList.remove('active');
+  if (btnCha) btnCha.classList.remove('active');
+
+  if (variant === 'devil' && btnDev) btnDev.classList.add('active');
+  else if (variant === 'chaos' && btnCha) btnCha.classList.add('active');
+  else if (btnStd) btnStd.classList.add('active');
 }
 
 function selectCreateBoardSize(size) {
@@ -1269,9 +1662,305 @@ function drawSOSLines(completedSOS = [], boardSize = 5) {
   });
 }
 
+let selectedCardIndexes = new Set();
+
+function renderLiarsView() {
+  if (!currentRoom || currentRoom.gameType !== 'liars_bar') return;
+
+  const mode = currentRoom.liarsMode || (currentRoom.gameData && currentRoom.gameData.liarsMode) || 'deck';
+  const deckView = document.getElementById('liarsDeckView');
+  const diceView = document.getElementById('liarsDiceView');
+
+  if (mode === 'deck') {
+    if (deckView) deckView.style.display = 'block';
+    if (diceView) diceView.style.display = 'none';
+
+    const tableRank = (currentRoom.gameData && currentRoom.gameData.tableRank) || 'King';
+    const rankValEl = document.getElementById('tableRankValue');
+    if (rankValEl) rankValEl.textContent = `${tableRank.toUpperCase()}'S TABLE`;
+
+    const centerPile = (currentRoom.gameData && currentRoom.gameData.centerPile) || [];
+    const lastPlay = currentRoom.gameData && currentRoom.gameData.lastPlay;
+
+    let totalCardsInPile = 0;
+    centerPile.forEach(p => { totalCardsInPile += (p.count || 0); });
+
+    const badgeEl = document.getElementById('pileCountBadge');
+    if (badgeEl) badgeEl.textContent = `${totalCardsInPile} Cards`;
+
+    const pileStack = document.getElementById('pileStack');
+    if (pileStack) {
+      pileStack.innerHTML = '';
+      if (totalCardsInPile === 0) {
+        pileStack.innerHTML = '<div class="stacked-card-back" style="transform: rotate(0deg); opacity: 0.25;"></div>';
+      } else {
+        const numToDraw = Math.min(12, totalCardsInPile);
+        for (let i = 0; i < numToDraw; i++) {
+          const cardBack = document.createElement('div');
+          cardBack.className = 'stacked-card-back';
+          const rot = ((i * 17) % 25) - 12;
+          const offsetX = ((i * 7) % 15) - 7;
+          const offsetY = -i * 3;
+          cardBack.style.transform = `translate(${offsetX}px, ${offsetY}px) rotate(${rot}deg)`;
+          cardBack.style.zIndex = i + 1;
+          pileStack.appendChild(cardBack);
+        }
+      }
+    }
+
+    const lastPlayEl = document.getElementById('lastPlayBadge');
+    if (lastPlayEl) {
+      if (lastPlay) {
+        lastPlayEl.textContent = `Last Play: ${lastPlay.playerName} played ${lastPlay.count} card(s) face-down`;
+      } else {
+        lastPlayEl.textContent = 'No cards played yet in this round';
+      }
+    }
+
+    renderLiarsDeckHand();
+  } else {
+    if (deckView) deckView.style.display = 'none';
+    if (diceView) diceView.style.display = 'block';
+
+    const currentBid = currentRoom.gameData && currentRoom.gameData.currentBid;
+    const bidTextEl = document.getElementById('currentBidText');
+    if (bidTextEl) {
+      if (currentBid) {
+        bidTextEl.textContent = `${currentBid.quantity} x ${currentBid.face}s (by ${currentBid.bidderName})`;
+      } else {
+        bidTextEl.textContent = 'No bid placed yet';
+      }
+    }
+
+    renderLiarsDiceCup();
+  }
+
+  renderLiarsRoster();
+
+  const isPlaying = roomStatus === 'playing';
+  const isMyTurn = currentUser && currentUser.userId === currentTurnUserId;
+
+  const btnPlay = document.getElementById('btnPlayCards');
+  const btnCallDeck = document.getElementById('btnCallLiarDeck');
+  const lastPlay = currentRoom.gameData && currentRoom.gameData.lastPlay;
+
+  if (btnPlay) btnPlay.disabled = !isPlaying || !isMyTurn || selectedCardIndexes.size === 0;
+  if (btnCallDeck) btnCallDeck.disabled = !isPlaying || !isMyTurn || !lastPlay;
+
+  const btnPlaceBid = document.getElementById('btnPlaceBid');
+  const btnCallDice = document.getElementById('btnCallLiarDice');
+  const currentBid = currentRoom.gameData && currentRoom.gameData.currentBid;
+
+  if (btnPlaceBid) btnPlaceBid.disabled = !isPlaying || !isMyTurn;
+  if (btnCallDice) btnCallDice.disabled = !isPlaying || !isMyTurn || !currentBid;
+}
+
+function renderLiarsDeckHand() {
+  const container = document.getElementById('myHandCards');
+  const countEl = document.getElementById('handCount');
+  if (!container || !currentUser) return;
+
+  const hands = (currentRoom && currentRoom.gameData && currentRoom.gameData.playerHands) || {};
+  const myHand = hands[currentUser.userId] || [];
+
+  if (countEl) countEl.textContent = myHand.length;
+  container.innerHTML = '';
+
+  if (myHand.length === 0) {
+    container.innerHTML = '<div class="sub-text">No cards in hand</div>';
+    return;
+  }
+
+  const cardImages = {
+    King: '/images/cards/king.jpg',
+    Queen: '/images/cards/queen.jpg',
+    Ace: '/images/cards/ace.jpg',
+    Joker: '/images/cards/joker.svg',
+    Devil: '/images/cards/devil.svg',
+    Chaos: '/images/cards/joker.svg'
+  };
+
+  myHand.forEach((card, index) => {
+    const isSelected = selectedCardIndexes.has(index);
+    const cardEl = document.createElement('div');
+    cardEl.className = `card-tile ${isSelected ? 'selected' : ''}`;
+    const imgUrl = cardImages[card] || '/images/cards/joker.svg';
+    cardEl.innerHTML = `
+      <img src="${imgUrl}" class="card-graphic-img" alt="${card}" />
+      <span class="card-rank-badge">${card}</span>
+    `;
+    cardEl.onclick = () => toggleCardSelection(index);
+    container.appendChild(cardEl);
+  });
+}
+
+function toggleCardSelection(index) {
+  if (roomStatus !== 'playing' || (currentUser && currentUser.userId !== currentTurnUserId)) {
+    return;
+  }
+
+  if (selectedCardIndexes.has(index)) {
+    selectedCardIndexes.delete(index);
+  } else {
+    if (selectedCardIndexes.size >= 3) {
+      showToast('You can select at most 3 cards per turn!', 'warning');
+      return;
+    }
+    selectedCardIndexes.add(index);
+  }
+
+  SoundFX.playTileClick();
+  renderLiarsDeckHand();
+  renderLiarsView();
+}
+
+function renderLiarsDiceCup() {
+  const container = document.getElementById('myDiceFlex');
+  if (!container || !currentUser) return;
+
+  const playerDice = (currentRoom.gameData && currentRoom.gameData.playerDice) || {};
+  const myDice = playerDice[currentUser.userId] || [];
+
+  container.innerHTML = '';
+
+  if (myDice.length === 0) {
+    container.innerHTML = '<div class="sub-text">No dice under cup</div>';
+    return;
+  }
+
+  const diceSymbols = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+  myDice.forEach(dieVal => {
+    const dieEl = document.createElement('div');
+    dieEl.className = 'die-cube';
+    dieEl.textContent = diceSymbols[dieVal - 1] || dieVal;
+    container.appendChild(dieEl);
+  });
+}
+
+function renderLiarsRoster() {
+  const container = document.getElementById('liarsRosterGrid');
+  if (!container || !currentRoom || !currentRoom.players) return;
+
+  const mode = currentRoom.liarsMode || (currentRoom.gameData && currentRoom.gameData.liarsMode) || 'deck';
+
+  if (mode === 'deck') {
+    const revolvers = (currentRoom.gameData && currentRoom.gameData.revolvers) || {};
+    container.innerHTML = currentRoom.players.map(p => {
+      const rev = revolvers[p.userId] || { isAlive: true, chambersLeft: 6 };
+      const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
+      const isDead = !rev.isAlive;
+      const isMe = currentUser && currentUser.userId === p.userId;
+
+      return `
+        <div class="liars-seat-card ${isTurn ? 'active-turn' : ''} ${isDead ? 'is-dead' : ''}">
+          <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="seat-avatar" />
+          <span class="seat-name">${escapeHtml(p.name)} ${isMe ? '⭐' : ''}</span>
+          <span class="seat-status-badge">
+            ${isDead ? '☠️ ELIMINATED' : `🔫 ${rev.chambersLeft} chambers`}
+          </span>
+        </div>
+      `;
+    }).join('');
+  } else {
+    const poisonDoses = (currentRoom.gameData && currentRoom.gameData.poisonDoses) || {};
+    const alivePlayersMap = (currentRoom.gameData && currentRoom.gameData.alivePlayers) || {};
+
+    container.innerHTML = currentRoom.players.map(p => {
+      const dose = poisonDoses[p.userId] || 0;
+      const isDead = alivePlayersMap[p.userId] === false;
+      const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
+      const isMe = currentUser && currentUser.userId === p.userId;
+
+      return `
+        <div class="liars-seat-card ${isTurn ? 'active-turn' : ''} ${isDead ? 'is-dead' : ''}">
+          <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="seat-avatar" />
+          <span class="seat-name">${escapeHtml(p.name)} ${isMe ? '⭐' : ''}</span>
+          <span class="seat-status-badge">
+            ${isDead ? '☠️ ELIMINATED' : `🍷 Poison: ${dose}/2`}
+          </span>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+function handleLiarsPlayCards() {
+  if (selectedCardIndexes.size === 0 || !currentRoom || !currentUser) return;
+
+  const indexes = Array.from(selectedCardIndexes);
+  socket.emit('liars_play_cards', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId,
+    cardIndexes: indexes
+  });
+
+  selectedCardIndexes.clear();
+}
+
+function handleLiarsCallLiarDeck() {
+  if (!currentRoom || !currentUser) return;
+  socket.emit('liars_call_liar_deck', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId
+  });
+}
+
+function handleLiarsTriggerPull() {
+  if (!currentRoom || !currentUser) return;
+  SoundFX.playTileClick();
+  socket.emit('liars_trigger_roulette', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId
+  });
+}
+
+function handleLiarsPlaceBid() {
+  if (!currentRoom || !currentUser) return;
+  const quantity = Number(document.getElementById('bidQuantityInput').value);
+  const face = Number(document.getElementById('bidFaceSelect').value);
+
+  if (isNaN(quantity) || quantity < 1) {
+    showToast('Please enter a valid quantity of dice', 'error');
+    return;
+  }
+
+  socket.emit('liars_place_bid', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId,
+    quantity,
+    face
+  });
+}
+
+function handleLiarsCallLiarDice() {
+  if (!currentRoom || !currentUser) return;
+  socket.emit('liars_call_liar_dice', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId
+  });
+}
+
+function handleHostStartGame() {
+  if (!currentRoom || !currentUser) return;
+  SoundFX.playTileClick();
+  socket.emit('start_game', {
+    roomId: currentRoom.roomId,
+    userId: currentUser.userId
+  });
+}
+
 window.selectCreateGameType = selectCreateGameType;
 window.selectCreateBoardSize = selectCreateBoardSize;
 window.selectSOSLetter = selectSOSLetter;
+window.selectCreateLiarsMode = selectCreateLiarsMode;
+window.selectCreateLiarsVariant = selectCreateLiarsVariant;
+window.handleHostStartGame = handleHostStartGame;
+window.handleLiarsPlayCards = handleLiarsPlayCards;
+window.handleLiarsCallLiarDeck = handleLiarsCallLiarDeck;
+window.handleLiarsTriggerPull = handleLiarsTriggerPull;
+window.handleLiarsPlaceBid = handleLiarsPlaceBid;
+window.handleLiarsCallLiarDice = handleLiarsCallLiarDice;
 
 // ==========================================================================
 // Room Actions & UI Handlers
@@ -1295,6 +1984,8 @@ function handleCreateRoomSubmit(event) {
 
   const gameType = document.getElementById('createGameType').value || 'bingo';
   const boardSize = Number(document.getElementById('createBoardSize').value) || 5;
+  const liarsMode = document.getElementById('createLiarsMode') ? document.getElementById('createLiarsMode').value : 'deck';
+  const liarsDeckVariant = document.getElementById('createLiarsVariant') ? document.getElementById('createLiarsVariant').value : 'standard';
   const roomName = document.getElementById('createRoomName').value.trim();
   const capacity = Number(document.getElementById('createCapacity').value) || 4;
   const password = document.getElementById('createPassword').value.trim();
@@ -1309,7 +2000,9 @@ function handleCreateRoomSubmit(event) {
     password,
     customRoomId,
     gameType,
-    boardSize
+    boardSize,
+    liarsMode,
+    liarsDeckVariant
   });
 }
 

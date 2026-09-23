@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="200" height="300">
+  <defs>
+    <linearGradient id="devilBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#450a0a"/>
+      <stop offset="50%" stop-color="#180202"/>
+      <stop offset="100%" stop-color="#050000"/>
+    </linearGradient>
+    <linearGradient id="fireBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#7f1d1d"/>
+    </linearGradient>
+  </defs>
+  <rect width="200" height="300" rx="12" fill="url(#devilBg)" stroke="url(#fireBorder)" stroke-width="4"/>
+  <rect x="8" y="8" width="184" height="284" rx="8" fill="none" stroke="#dc2626" stroke-width="1.5"/>
+  <!-- Corner Labels -->
+  <text x="16" y="32" font-family="'Cinzel', serif" font-size="22" font-weight="bold" fill="#ef4444">D</text>
+  <text x="16" y="48" font-size="14" fill="#f97316">😈</text>
+  <text x="184" y="278" font-family="'Cinzel', serif" font-size="22" font-weight="bold" fill="#ef4444" text-anchor="end">D</text>
+  <!-- Center Devil Emblem -->
+  <g transform="translate(100, 140)">
+    <circle r="48" fill="#7f1d1d" stroke="url(#fireBorder)" stroke-width="3"/>
+    <text x="0" y="16" font-size="52" text-anchor="middle">😈</text>
+  </g>
+  <text x="100" y="235" font-family="'Cinzel', serif" font-size="15" font-weight="900" letter-spacing="3" fill="#ef4444" text-anchor="middle">DEVIL CARD</text>
+</svg>

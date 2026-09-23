@@ -1849,7 +1849,564 @@ body {
 }
 
 @keyframes draw-line {
-  from { stroke-dashoffset: 300; }
-  to { stroke-dashoffset: 0; }
 }
+
+/* ==========================================================================
+   Liar's Bar Game Styles (Liar's Deck & Liar's Dice)
+   ========================================================================== */
+.badge-liars {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fb7185;
+  border: 1px solid rgba(251, 113, 133, 0.3);
+}
+
+.liars-turn-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(30, 20, 30, 0.85);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-main);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.liars-turn-banner.your-turn {
+  background: linear-gradient(135deg, rgba(244, 63, 94, 0.3), rgba(225, 29, 72, 0.3));
+  border-color: #f43f5e;
+  color: #fda4af;
+  animation: pulse-border-red 1.8s infinite alternate;
+}
+
+@keyframes pulse-border-red {
+  from { box-shadow: 0 0 10px rgba(244, 63, 94, 0.3); }
+  to { box-shadow: 0 0 25px rgba(244, 63, 94, 0.7); }
+}
+
+/* Table Rank Card */
+.table-rank-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(180, 83, 9, 0.15));
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.25rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.table-rank-icon {
+  font-size: 2.2rem;
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6));
+}
+
+.table-rank-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.table-rank-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 1px;
+}
+
+.table-rank-value {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.table-rank-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Central Saloon Table Pile */
+.saloon-table-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: radial-gradient(circle, rgba(45, 20, 30, 0.8), rgba(15, 10, 20, 0.9));
+  border: 1px solid rgba(244, 63, 94, 0.2);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.25rem;
+  min-height: 140px;
+  position: relative;
+}
+
+.center-card-pile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.center-card-pile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+  min-height: 140px;
+}
+
+.pile-card-stack {
+  position: relative;
+  width: 90px;
+  height: 125px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stacked-card-back {
+  position: absolute;
+  width: 76px;
+  height: 110px;
+  background: url('/images/cards/back.svg') center/cover no-repeat;
+  border: 2px solid rgba(244, 63, 94, 0.6);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pile-count-badge {
+  position: absolute;
+  bottom: -10px;
+  background: var(--rose);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+}
+
+.revealed-cards-container {
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px solid #fbbf24;
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.5rem;
+  text-align: center;
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.4);
+  animation: reveal-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes reveal-pop {
+  0% { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.reveal-header {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #fbbf24;
+  letter-spacing: 1px;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.reveal-cards-flex {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.reveal-card-item {
+  width: 76px;
+  height: 110px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 2px solid #fbbf24;
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+  animation: flip-card 0.5s ease-out;
+}
+
+@keyframes flip-card {
+  0% { transform: rotateY(90deg); }
+  100% { transform: rotateY(0deg); }
+}
+
+.reveal-result-badge {
+  font-size: 0.95rem;
+  font-weight: 900;
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius-full);
+  display: inline-block;
+}
+
+.reveal-result-badge.truth {
+  background: rgba(16, 185, 129, 0.25);
+  border: 1.5px solid #10b981;
+  color: #34d399;
+}
+
+.reveal-result-badge.bluff {
+  background: rgba(239, 68, 68, 0.25);
+  border: 1.5px solid #ef4444;
+  color: #fca5a5;
+}
+
+.last-play-badge {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Interactive Cards Hand */
+.my-hand-container {
+  background: rgba(22, 27, 46, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+}
+
+.hand-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.cards-flex {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.card-tile {
+  width: 86px;
+  height: 128px;
+  background: #0f172a;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.card-tile:hover {
+  transform: translateY(-6px);
+  border-color: var(--primary);
+  box-shadow: 0 8px 20px var(--primary-glow);
+}
+
+.card-tile.selected {
+  transform: translateY(-14px) scale(1.06);
+  border-color: var(--rose);
+  box-shadow: 0 0 22px rgba(244, 63, 94, 0.7);
+}
+
+.card-graphic-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card-rank-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.85);
+  color: #fbbf24;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  white-space: nowrap;
+}
+
+/* Liar's Dice Bidding Controls */
+.current-bid-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(14, 116, 144, 0.15));
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1rem;
+}
+
+.bid-icon {
+  font-size: 2.2rem;
+  filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.6));
+}
+
+.bid-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.bid-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #38bdf8;
+  letter-spacing: 1px;
+}
+
+.bid-value {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.my-cup-card {
+  background: rgba(22, 27, 46, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+}
+
+.cup-header {
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.85rem;
+}
+
+.dice-flex {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.die-cube {
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #ffffff, #e2e8f0);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #0f172a;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.bidding-inputs {
+  display: flex;
+  gap: 1rem;
+}
+
+.liars-actions-bar {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.liars-actions-bar .btn {
+  flex: 1;
+}
+
+/* Seated Players Roster */
+.liars-roster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.85rem;
+}
+
+.liars-seat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  text-align: center;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.liars-seat-card.active-turn {
+  border-color: var(--rose);
+  background: rgba(244, 63, 94, 0.15);
+  box-shadow: 0 0 15px rgba(244, 63, 94, 0.35);
+}
+
+.liars-seat-card.is-dead {
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.seat-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 0.4rem;
+}
+
+.seat-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-main);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat-status-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-top: 0.3rem;
+}
+
+/* Revolver Modal & Cylinder Visuals */
+.roulette-card {
+  text-align: center;
+  padding: 2rem 1.5rem;
+  background: linear-gradient(135deg, #1f0b14, #0b0d17);
+  border: 2px solid var(--rose);
+  box-shadow: 0 0 35px rgba(244, 63, 94, 0.5);
+}
+
+.revolver-icon-spin {
+  font-size: 3.5rem;
+  margin-bottom: 0.5rem;
+  animation: pulse-gun 1.5s infinite alternate;
+}
+
+@keyframes pulse-gun {
+  from { transform: scale(1); }
+  to { transform: scale(1.15) rotate(-10deg); }
+}
+
+.revolver-cylinder-visual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.cylinder-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 4px solid #f43f5e;
+  background: radial-gradient(circle, #2a0815 0%, #0c0206 100%);
+  position: relative;
+  box-shadow: inset 0 0 20px rgba(244, 63, 94, 0.4), 0 0 20px rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.cylinder-ring.spinning {
+  animation: cylinder-spin 0.6s ease-in-out infinite;
+}
+
+@keyframes cylinder-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.chamber-slot {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #151828;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.chamber-slot:nth-child(1) { transform: rotate(0deg) translate(48px) rotate(0deg); }
+.chamber-slot:nth-child(2) { transform: rotate(60deg) translate(48px) rotate(-60deg); }
+.chamber-slot:nth-child(3) { transform: rotate(120deg) translate(48px) rotate(-120deg); }
+.chamber-slot:nth-child(4) { transform: rotate(180deg) translate(48px) rotate(-180deg); }
+.chamber-slot:nth-child(5) { transform: rotate(240deg) translate(48px) rotate(-240deg); }
+.chamber-slot:nth-child(6) { transform: rotate(300deg) translate(48px) rotate(-300deg); }
+
+.chamber-slot.active {
+  border-color: #f43f5e;
+  box-shadow: 0 0 12px #f43f5e;
+}
+
+.chamber-slot.bullet {
+  background: #dc2626;
+  border-color: #ef4444;
+  box-shadow: 0 0 15px #ef4444;
+}
+
+.chamber-slot.empty {
+  opacity: 0.4;
+  background: #0f172a;
+}
+
+.revolver-chamber-display {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-weight: 700;
+}
+
+.roulette-outcome-box {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 800;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.roulette-outcome-box.blank {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid #10b981;
+  color: #34d399;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+}
+
+.roulette-outcome-box.bang {
+  background: rgba(239, 68, 68, 0.3);
+  border: 2px solid #ef4444;
+  color: #fca5a5;
+  box-shadow: 0 0 25px rgba(239, 68, 68, 0.7);
+  animation: flash-bang 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes flash-bang {
+  0% { opacity: 0.8; transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1.02); }
+}
+
+.trigger-pull-btn {
+  width: 100%;
+  font-size: 1.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-lg);
 }
