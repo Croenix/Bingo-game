@@ -92,7 +92,7 @@ router.post('/', async (req, res, next) => {
     // If isPublic isn't explicitly passed, room is public if password is empty
     const roomIsPublic = isPublic !== undefined ? Boolean(isPublic) : (trimPassword.length === 0);
 
-    const maxCap = Math.min(Math.max(Number(capacity) || 4, 2), 10);
+    const maxCap = gameType === 'sos' ? Math.min(Math.max(Number(capacity) || 3, 2), 3) : Math.min(Math.max(Number(capacity) || 4, 2), 10);
     const vivoxChannelUri = getVivoxChannelUri(finalRoomId);
     const expiresAt = calculateExpiresAt();
 

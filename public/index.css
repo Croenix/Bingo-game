@@ -1127,7 +1127,7 @@ body {
 /* Toast Notifications */
 #toastContainer {
   position: fixed;
-  bottom: 1.5rem;
+  top: 1.5rem;
   right: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -1150,8 +1150,8 @@ body {
 .toast-success { border-color: var(--emerald); }
 
 @keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 /* Loading & Empty States */
@@ -1460,7 +1460,8 @@ body {
   #toastContainer {
     left: 0.8rem;
     right: 0.8rem;
-    bottom: max(1rem, env(safe-area-inset-bottom));
+    top: max(1rem, env(safe-area-inset-top));
+    bottom: auto;
     max-width: 440px;
     margin: 0 auto;
   }
@@ -3134,4 +3135,51 @@ body {
   border-color: #f43f5e;
   color: #fff;
   box-shadow: 0 0 15px rgba(244, 63, 94, 0.4);
+}
+
+/* ==========================================================================
+   SOS Enhanced Symbols, Letter Badges & Scoreboard Indicators
+   ========================================================================== */
+.assigned-letter-display {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sos-letter-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.cell-main-letter {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cell-letter-id {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.sos-player-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }

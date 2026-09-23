@@ -5,6 +5,12 @@ const { getVivoxUserUri, getVivoxChannelUri, generateVivoxToken } = require('../
 const { generateUniqueBingoCard } = require('../utils/bingoCardGenerator');
 const { calculateExpiresAt, checkAndRemoveIfExpired, sanitizeRoom } = require('../utils/roomHelpers');
 
+function getCellLetter(cell) {
+  if (!cell) return '';
+  if (typeof cell === 'object') return cell.letter || '';
+  return String(cell);
+}
+
 function checkFormedSOS(grid, boardSize, row, col, activeUserId, activeUserName, existingCompletedSOS) {
   const newSOSList = [];
   const existingSet = new Set(
@@ -36,9 +42,9 @@ function checkFormedSOS(grid, boardSize, row, col, activeUserId, activeUserName,
         r2 >= 0 && r2 < boardSize && c2 >= 0 && c2 < boardSize
       ) {
         if (
-          grid[r0][c0] === 'S' &&
-          grid[r1][c1] === 'O' &&
-          grid[r2][c2] === 'S'
+          getCellLetter(grid[r0][c0]) === 'S' &&
+          getCellLetter(grid[r1][c1]) === 'O' &&
+          getCellLetter(grid[r2][c2]) === 'S'
         ) {
           const coords = [[r0, c0], [r1, c1], [r2, c2]];
           const sortedCoords = [...coords].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
@@ -104,8 +110,24 @@ function initializeGameData(room) {
     const size = [3, 5].includes(room.boardSize) ? room.boardSize : 5;
     const grid = Array(size).fill(null).map(() => Array(size).fill(''));
     const scores = {};
-    room.players.forEach(p => {
+    const playerLetters = {};
+    const playerColors = ['#38bdf8', '#10b981', '#f43f5e'];
+    const letterAssignments = [
+      { letter: 'S', letterId: 'S1', label: 'S₁' },
+      { letter: 'O', letterId: 'O', label: 'O' },
+      { letter: 'S', letterId: 'S2', label: 'S₂' }
+    ];
+
+    room.players.forEach((p, idx) => {
       scores[p.userId] = 0;
+      const assign = letterAssignments[idx] || { letter: 'S', letterId: `S${idx + 1}`, label: `S${idx + 1}` };
+      playerLetters[p.userId] = {
+        letter: assign.letter,
+        letterId: assign.letterId,
+        label: assign.label,
+        color: playerColors[idx % playerColors.length],
+        playerIndex: idx + 1
+      };
     });
 
     room.gameData = {
@@ -114,6 +136,7 @@ function initializeGameData(room) {
       boardSize: size,
       grid,
       scores,
+      playerLetters,
       completedSOS: [],
       currentTurnUserId: firstPlayer.userId,
       currentTurnName: firstPlayer.name,
@@ -321,7 +344,7 @@ function registerRoomHandlers(io, socket) {
         isPublic: roomIsPublic,
         creatorId: formattedUserId,
         creatorName: trustedName,
-        capacity: Math.min(Math.max(Number(capacity) || 4, 2), 10),
+        capacity: gameType === 'sos' ? Math.min(Math.max(Number(capacity) || 3, 2), 3) : Math.min(Math.max(Number(capacity) || 4, 2), 10),
         gameType,
         boardSize,
         liarsMode,
@@ -583,7 +606,8 @@ function registerRoomHandlers(io, socket) {
           ...(updatedRoom.gameType === 'sos' ? {
             grid: updatedRoom.gameData.grid,
             scores: updatedRoom.gameData.scores,
-            completedSOS: updatedRoom.gameData.completedSOS
+            completedSOS: updatedRoom.gameData.completedSOS,
+            playerLetters: updatedRoom.gameData.playerLetters
           } : {})
         });
       }
@@ -631,7 +655,8 @@ function registerRoomHandlers(io, socket) {
         ...(room.gameType === 'sos' ? {
           grid: room.gameData.grid,
           scores: room.gameData.scores,
-          completedSOS: room.gameData.completedSOS
+          completedSOS: room.gameData.completedSOS,
+          playerLetters: room.gameData.playerLetters
         } : {})
       });
     } catch (err) {
@@ -682,15 +707,26 @@ function registerRoomHandlers(io, socket) {
         return sendError('sos_make_move', 'Invalid row or column indices');
       }
 
+      const assignedLetterObj = (room.gameData && room.gameData.playerLetters) ? room.gameData.playerLetters[formattedUserId] : null;
+      const moveLetter = assignedLetterObj ? assignedLetterObj.letter : (selectedLetter || 'S');
+      const moveLetterId = assignedLetterObj ? assignedLetterObj.letterId : moveLetter;
+      const moveColor = assignedLetterObj ? assignedLetterObj.color : '#38bdf8';
+
       let grid = room.gameData.grid || Array(boardSize).fill(null).map(() => Array(boardSize).fill(''));
-      if (grid[r] && grid[r][c] !== '') {
+      if (getCellLetter(grid[r] ? grid[r][c] : '') !== '') {
         return sendError('sos_make_move', 'Cell is already occupied');
       }
 
-      grid[r][c] = selectedLetter;
-
       const playerObj = room.players.find(p => p.userId === formattedUserId);
       const playerName = playerObj ? playerObj.name : formattedUserId;
+
+      grid[r][c] = {
+        letter: moveLetter,
+        letterId: moveLetterId,
+        color: moveColor,
+        placedBy: formattedUserId,
+        playerName
+      };
 
       const newSOSLines = checkFormedSOS(
         grid,
@@ -723,7 +759,7 @@ function registerRoomHandlers(io, socket) {
       let isBoardFull = true;
       for (let i = 0; i < boardSize; i++) {
         for (let j = 0; j < boardSize; j++) {
-          if (grid[i][j] === '') {
+          if (getCellLetter(grid[i][j]) === '') {
             isBoardFull = false;
             break;
           }
@@ -753,9 +789,12 @@ function registerRoomHandlers(io, socket) {
           placedBy: { userId: formattedUserId, name: playerName },
           row: r,
           col: c,
-          letter: selectedLetter,
+          letter: moveLetter,
+          letterId: moveLetterId,
+          color: moveColor,
           grid,
           scores,
+          playerLetters: room.gameData.playerLetters,
           newSOSLines,
           completedSOS: room.gameData.completedSOS,
           currentTurnUserId: room.gameData.currentTurnUserId,
@@ -768,6 +807,7 @@ function registerRoomHandlers(io, socket) {
           roomId: formattedRoomId,
           winners,
           scores,
+          playerLetters: room.gameData.playerLetters,
           completedSOS: room.gameData.completedSOS,
           grid
         });
@@ -793,9 +833,12 @@ function registerRoomHandlers(io, socket) {
         placedBy: { userId: formattedUserId, name: playerName },
         row: r,
         col: c,
-        letter: selectedLetter,
+        letter: moveLetter,
+        letterId: moveLetterId,
+        color: moveColor,
         grid,
         scores,
+        playerLetters: room.gameData.playerLetters,
         newSOSLines,
         completedSOS: room.gameData.completedSOS,
         currentTurnUserId: room.gameData.currentTurnUserId,

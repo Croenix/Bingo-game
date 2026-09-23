@@ -698,6 +698,7 @@ function initSocket() {
         currentRoom.gameData.grid = data.grid;
         currentRoom.gameData.scores = data.scores || {};
         currentRoom.gameData.completedSOS = data.completedSOS || [];
+        if (data.playerLetters) currentRoom.gameData.playerLetters = data.playerLetters;
       }
     }
 
@@ -722,13 +723,14 @@ function initSocket() {
   });
 
   socket.on('sos_move_made', (data) => {
-    const { placedBy, row, col, letter, grid, scores, newSOSLines, completedSOS, currentTurnUserId: nextTurnId, currentTurnName: nextTurnName, extraTurn, isFinished } = data;
+    const { placedBy, row, col, letter, grid, scores, playerLetters, newSOSLines, completedSOS, currentTurnUserId: nextTurnId, currentTurnName: nextTurnName, extraTurn, isFinished } = data;
 
     if (currentRoom) {
       if (!currentRoom.gameData) currentRoom.gameData = {};
       currentRoom.gameData.grid = grid;
       currentRoom.gameData.scores = scores;
       currentRoom.gameData.completedSOS = completedSOS;
+      if (playerLetters) currentRoom.gameData.playerLetters = playerLetters;
     }
 
     currentTurnUserId = nextTurnId;
@@ -1459,6 +1461,11 @@ function selectCreateGameType(type) {
   const sosGroup = document.getElementById('sosSizeGroup');
   const liarsGroup = document.getElementById('liarsOptionsGroup');
 
+  const capInput = document.getElementById('createCapacity');
+  const capVal = document.getElementById('capacityVal');
+  const capLabel = document.getElementById('createCapacityLabel');
+  const capHelp = document.getElementById('capacityHelpText');
+
   btnBingo.classList.remove('active');
   btnSOS.classList.remove('active');
   if (btnLiars) btnLiars.classList.remove('active');
@@ -1469,11 +1476,35 @@ function selectCreateGameType(type) {
   if (type === 'sos') {
     btnSOS.classList.add('active');
     sosGroup.style.display = 'block';
+    if (capInput) {
+      capInput.min = '2';
+      capInput.max = '3';
+      capInput.value = '3';
+      if (capVal) capVal.textContent = '3';
+      if (capLabel) capLabel.textContent = 'Max Players (2 - 3 for SOS)';
+      if (capHelp) capHelp.textContent = '⚡ SOS Game supports maximum 3 players (2-3 players).';
+    }
   } else if (type === 'liars_bar') {
     if (btnLiars) btnLiars.classList.add('active');
     if (liarsGroup) liarsGroup.style.display = 'block';
+    if (capInput) {
+      capInput.min = '2';
+      capInput.max = '10';
+      if (Number(capInput.value) < 2) capInput.value = '4';
+      if (capVal) capVal.textContent = capInput.value;
+      if (capLabel) capLabel.textContent = 'Max Players (2 - 10)';
+      if (capHelp) capHelp.textContent = '';
+    }
   } else {
     btnBingo.classList.add('active');
+    if (capInput) {
+      capInput.min = '2';
+      capInput.max = '10';
+      if (Number(capInput.value) < 2) capInput.value = '4';
+      if (capVal) capVal.textContent = capInput.value;
+      if (capLabel) capLabel.textContent = 'Max Players (2 - 10)';
+      if (capHelp) capHelp.textContent = '';
+    }
   }
 }
 
@@ -1612,7 +1643,23 @@ function renderSOSBoard(grid, boardSize = 5, completedSOS = []) {
 
   for (let r = 0; r < boardSize; r++) {
     for (let c = 0; c < boardSize; c++) {
-      const cellVal = grid && grid[r] ? (grid[r][c] || '') : '';
+      const rawCell = grid && grid[r] ? grid[r][c] : null;
+      let cellVal = '';
+      let cellColor = '';
+      let letterId = '';
+      let placedBy = '';
+
+      if (rawCell) {
+        if (typeof rawCell === 'object') {
+          cellVal = rawCell.letter || '';
+          cellColor = rawCell.color || '';
+          letterId = rawCell.letterId || cellVal;
+          placedBy = rawCell.playerName || rawCell.placedBy || '';
+        } else {
+          cellVal = String(rawCell);
+        }
+      }
+
       const cell = document.createElement('div');
       let classes = 'sos-cell';
 
@@ -1621,7 +1668,31 @@ function renderSOSBoard(grid, boardSize = 5, completedSOS = []) {
       }
 
       cell.className = classes;
-      cell.textContent = cellVal;
+
+      if (cellVal !== '') {
+        if (cellColor) {
+          cell.style.borderColor = cellColor;
+          cell.style.boxShadow = `0 0 10px ${cellColor}40`;
+        }
+
+        const mainLetterSpan = document.createElement('span');
+        mainLetterSpan.className = 'cell-main-letter';
+        if (cellColor) mainLetterSpan.style.color = cellColor;
+        mainLetterSpan.textContent = cellVal;
+        cell.appendChild(mainLetterSpan);
+
+        if (letterId && letterId !== cellVal) {
+          const badgeSpan = document.createElement('span');
+          badgeSpan.className = 'cell-letter-id';
+          if (cellColor) badgeSpan.style.backgroundColor = cellColor;
+          badgeSpan.textContent = letterId;
+          cell.appendChild(badgeSpan);
+        }
+
+        if (placedBy) {
+          cell.title = `Placed by ${placedBy} (${letterId})`;
+        }
+      }
 
       if (cellVal === '' && isPlaying && isMyTurn) {
         cell.onclick = () => handleSOSCellClick(r, c);
@@ -1631,7 +1702,34 @@ function renderSOSBoard(grid, boardSize = 5, completedSOS = []) {
     }
   }
 
+  updateSOSLetterPicker();
   setTimeout(() => drawSOSLines(completedSOS, boardSize), 50);
+}
+
+function updateSOSLetterPicker() {
+  const manualBox = document.getElementById('sosManualLetterButtons');
+  const badgeBox = document.getElementById('sosAssignedBadge');
+  const myTag = document.getElementById('sosMySymbolTag');
+
+  if (!currentRoom || !currentUser || !currentRoom.gameData || !currentRoom.gameData.playerLetters) {
+    if (manualBox) manualBox.style.display = 'flex';
+    if (badgeBox) badgeBox.style.display = 'none';
+    return;
+  }
+
+  const myInfo = currentRoom.gameData.playerLetters[currentUser.userId];
+  if (myInfo) {
+    if (manualBox) manualBox.style.display = 'none';
+    if (badgeBox) badgeBox.style.display = 'flex';
+    if (myTag) {
+      myTag.textContent = `${myInfo.label || myInfo.letterId || myInfo.letter} (${myInfo.letter})`;
+      myTag.style.backgroundColor = myInfo.color || '#38bdf8';
+    }
+    selectedSOSLetter = myInfo.letter;
+  } else {
+    if (manualBox) manualBox.style.display = 'flex';
+    if (badgeBox) badgeBox.style.display = 'none';
+  }
 }
 
 function renderSOSScoreboard() {
@@ -1639,15 +1737,23 @@ function renderSOSScoreboard() {
   if (!container || !currentRoom || !currentRoom.players) return;
 
   const scores = (currentRoom.gameData && currentRoom.gameData.scores) || {};
+  const playerLetters = (currentRoom.gameData && currentRoom.gameData.playerLetters) || {};
 
   container.innerHTML = currentRoom.players.map(p => {
     const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
     const score = scores[p.userId] || 0;
+    const letterInfo = playerLetters[p.userId] || {};
+    const badgeColor = letterInfo.color || '#38bdf8';
+    const badgeLabel = letterInfo.label || letterInfo.letterId || letterInfo.letter || '';
+
     return `
-      <div class="sos-player-score ${isTurn ? 'active-turn' : ''}">
+      <div class="sos-player-score ${isTurn ? 'active-turn' : ''}" style="border-left: 4px solid ${badgeColor};">
         <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="sos-player-avatar" />
         <div class="sos-player-info">
-          <span class="sos-player-name">${escapeHtml(p.name)}</span>
+          <div class="sos-player-name-row">
+            <span class="sos-player-name">${escapeHtml(p.name)}</span>
+            ${badgeLabel ? `<span class="sos-letter-tag" style="background-color: ${badgeColor}; border-color: ${badgeColor};">${badgeLabel}</span>` : ''}
+          </div>
           <span class="sos-score-val">${score} pts</span>
         </div>
       </div>
@@ -1708,7 +1814,10 @@ function drawSOSLines(completedSOS = [], boardSize = 5) {
     const x2 = (p3[1] + 0.5) * cellW;
     const y2 = (p3[0] + 0.5) * cellH;
 
-    const color = colors[idx % colors.length];
+    let color = colors[idx % colors.length];
+    if (sos.playerUserId && currentRoom && currentRoom.gameData && currentRoom.gameData.playerLetters && currentRoom.gameData.playerLetters[sos.playerUserId]) {
+      color = currentRoom.gameData.playerLetters[sos.playerUserId].color || color;
+    }
 
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     line.setAttribute('x1', x1);

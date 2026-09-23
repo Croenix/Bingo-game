@@ -326,9 +326,12 @@
             <!-- Dynamic player scores rendered here -->
           </div>
 
-          <div class="sos-letter-picker">
-            <span class="picker-label">Letter:</span>
-            <div class="letter-buttons">
+          <div class="sos-letter-picker" id="sosLetterPicker">
+            <span class="picker-label" id="sosLetterPickerLabel">Your Assigned Symbol:</span>
+            <div id="sosAssignedBadge" class="assigned-letter-display">
+              <span id="sosMySymbolTag" class="sos-letter-tag font-bold">S₁</span>
+            </div>
+            <div class="letter-buttons" id="sosManualLetterButtons" style="display: none;">
               <button type="button" id="btnLetterS" class="btn-letter active" onclick="selectSOSLetter('S')">S</button>
               <button type="button" id="btnLetterO" class="btn-letter" onclick="selectSOSLetter('O')">O</button>
             </div>
@@ -571,11 +574,12 @@
           </div>
 
           <div class="form-group">
-            <label for="createCapacity">Max Players (2 - 10)</label>
+            <label for="createCapacity" id="createCapacityLabel">Max Players (2 - 10)</label>
             <div class="range-group">
               <input type="range" id="createCapacity" min="2" max="10" value="4" oninput="document.getElementById('capacityVal').textContent = this.value" />
               <span id="capacityVal" class="range-val">4</span>
             </div>
+            <small id="capacityHelpText" class="text-dim mt-1" style="display: block; font-size: 0.8rem;"></small>
           </div>
 
           <div class="form-group">
