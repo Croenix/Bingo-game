@@ -1479,10 +1479,64 @@ function selectCreateGameType(type) {
 
 function openCreateRoomWithGame(type) {
   if (!currentUser) return openModal('authModal');
+  const typeGroup = document.getElementById('createGameTypeGroup');
+  const titleEl = document.getElementById('createRoomModalTitle');
+  if (typeGroup) typeGroup.style.display = 'none';
+
   selectCreateGameType(type);
+
+  if (titleEl) {
+    if (type === 'sos') titleEl.textContent = '🔤 Create SOS Room';
+    else if (type === 'liars_bar') titleEl.textContent = '🍷 Create Liar\'s Bar Room';
+    else titleEl.textContent = '🎲 Create Bingo Room';
+  }
+
   openModal('createRoomModal');
 }
 window.openCreateRoomWithGame = openCreateRoomWithGame;
+
+function filterGameModeCards(category, btnElement) {
+  const pills = document.querySelectorAll('.mode-filter-pill');
+  pills.forEach(p => p.classList.remove('active'));
+  if (btnElement) btnElement.classList.add('active');
+
+  const cards = document.querySelectorAll('.game-launch-card');
+  cards.forEach(card => {
+    const cardCat = card.getAttribute('data-category');
+    if (category === 'all' || cardCat === category) {
+      card.style.display = 'flex';
+      card.style.animation = 'fadeIn 0.3s ease';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+window.filterGameModeCards = filterGameModeCards;
+
+function quickMatchGame(gameType) {
+  if (!currentUser) return openModal('authModal');
+
+  // Attempt to find an active public room of gameType to join
+  const matchingRoomCard = Array.from(document.querySelectorAll('.room-card')).find(card => {
+    const text = card.textContent.toLowerCase();
+    if (gameType === 'bingo' && text.includes('bingo')) return true;
+    if (gameType === 'sos' && text.includes('sos')) return true;
+    if (gameType === 'liars_bar' && (text.includes('liar') || text.includes('bar'))) return true;
+    return false;
+  });
+
+  if (matchingRoomCard) {
+    const joinBtn = matchingRoomCard.querySelector('button');
+    if (joinBtn) {
+      joinBtn.click();
+      return;
+    }
+  }
+
+  // Fallback: Open pre-configured creation modal for instant 1-tap room creation
+  openCreateRoomWithGame(gameType);
+}
+window.quickMatchGame = quickMatchGame;
 
 function selectCreateLiarsMode(mode) {
   document.getElementById('createLiarsMode').value = mode;
@@ -2132,6 +2186,11 @@ function openProfileModal() {
 
 function openCreateRoomModal() {
   if (!currentUser) return openModal('authModal');
+  const typeGroup = document.getElementById('createGameTypeGroup');
+  const titleEl = document.getElementById('createRoomModalTitle');
+  if (typeGroup) typeGroup.style.display = 'block';
+  if (titleEl) titleEl.textContent = '➕ Create New Game Room';
+  selectCreateGameType('bingo');
   openModal('createRoomModal');
 }
 
