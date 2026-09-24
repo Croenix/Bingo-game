@@ -43,6 +43,9 @@ dependencies:
   agora_rtc_engine: ^6.6.4
   permission_handler: ^13.0.2
 
+dependency_overrides:
+  permission_handler_android: 13.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

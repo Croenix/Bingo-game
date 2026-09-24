@@ -146,8 +146,9 @@ class _SplashAuthScreenState extends State<SplashAuthScreen> {
                           controller: _gmailController,
                           keyboardType: TextInputType.emailAddress,
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty)
+                            if (v == null || v.trim().isEmpty) {
                               return 'Enter your Gmail address';
+                            }
                             if (!v.contains('@')) return 'Enter a valid email';
                             return null;
                           },

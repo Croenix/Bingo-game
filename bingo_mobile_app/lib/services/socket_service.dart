@@ -107,83 +107,99 @@ class SocketService {
 
     // Register server event listeners
     _socket!.on('room_created', (data) {
-      if (data is Map)
+      if (data is Map) {
         _roomCreatedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('room_joined', (data) {
-      if (data is Map)
+      if (data is Map) {
         _roomJoinedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('player_joined', (data) {
-      if (data is Map)
+      if (data is Map) {
         _playerJoinedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('player_left', (data) {
-      if (data is Map)
+      if (data is Map) {
         _playerLeftController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('room_deleted', (data) {
-      if (data is Map)
+      if (data is Map) {
         _roomDeletedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('game_started', (data) {
-      if (data is Map)
+      if (data is Map) {
         _gameStartedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('number_picked', (data) {
-      if (data is Map)
+      if (data is Map) {
         _numberPickedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('bingo_card_assigned', (data) {
-      if (data is Map)
+      if (data is Map) {
         _bingoCardAssignedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('bingo_claimed', (data) {
-      if (data is Map)
+      if (data is Map) {
         _bingoClaimedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('sos_move_made', (data) {
-      if (data is Map)
+      if (data is Map) {
         _sosMoveMadeController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('sos_game_ended', (data) {
-      if (data is Map)
+      if (data is Map) {
         _sosGameEndedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('liars_cards_played', (data) {
-      if (data is Map)
+      if (data is Map) {
         _liarsCardsPlayedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('liars_challenge_resolved', (data) {
-      if (data is Map)
+      if (data is Map) {
         _liarsChallengeResolvedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('liars_roulette_result', (data) {
-      if (data is Map)
+      if (data is Map) {
         _liarsRouletteResultController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('user_balance_updated', (data) {
-      if (data is Map)
+      if (data is Map) {
         _balanceUpdatedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('voice_state_updated', (data) {
-      if (data is Map)
+      if (data is Map) {
         _voiceStateUpdatedController.add(Map<String, dynamic>.from(data));
+      }
     });
 
     _socket!.on('room_error', (data) {

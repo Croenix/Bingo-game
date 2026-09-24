@@ -351,8 +351,9 @@ class _CreateRoomDialogState extends State<CreateRoomDialog> {
                                   ),
                                 ],
                                 onChanged: (v) {
-                                  if (v != null)
+                                  if (v != null) {
                                     setState(() => _liarsVariant = v);
+                                  }
                                 },
                               ),
                             ),
