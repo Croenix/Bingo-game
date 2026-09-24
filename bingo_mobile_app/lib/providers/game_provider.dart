@@ -7,10 +7,16 @@ import '../models/room_model.dart';
 import '../models/challenge_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
+import '../services/agora_voice_service.dart';
 
 class GameProvider with ChangeNotifier {
   final SocketService _socketService = SocketService();
   SocketService get socketService => _socketService;
+
+  final AgoraVoiceService _voiceService = AgoraVoiceService();
+  AgoraVoiceService get voiceService => _voiceService;
+  final Map<String, Map<String, dynamic>> _playerVoiceStates = {};
+  Map<String, Map<String, dynamic>> get playerVoiceStates => _playerVoiceStates;
 
   UserModel? _currentUser;
   String _deviceId = '';
@@ -70,6 +76,7 @@ class GameProvider with ChangeNotifier {
   StreamSubscription? _subLiarsChallenge;
   StreamSubscription? _subLiarsRoulette;
   StreamSubscription? _subBalance;
+  StreamSubscription? _subVoiceState;
   StreamSubscription? _subError;
 
   // Getters
@@ -129,6 +136,7 @@ class GameProvider with ChangeNotifier {
 
     await ApiService.initBaseUrl();
     await _initDeviceId();
+    _voiceService.addListener(notifyListeners);
     _socketService.connect();
     _setupSocketListeners();
 
@@ -246,8 +254,22 @@ class GameProvider with ChangeNotifier {
     _subRoomDeleted = _socketService.onRoomDeleted.listen((data) {
       _errorMessage = data['reason'] ?? 'Room was closed';
       _currentRoom = null;
+      _voiceService.leaveChannel();
+      _playerVoiceStates.clear();
       notifyListeners();
       fetchPublicRooms();
+    });
+
+    _subVoiceState = _socketService.onVoiceStateUpdated.listen((data) {
+      final userId = data['userId']?.toString();
+      if (userId != null) {
+        _playerVoiceStates[userId] = {
+          'isMicMuted': data['isMicMuted'] == true,
+          'isSpeakerMuted': data['isSpeakerMuted'] == true,
+        };
+        _playerVoiceStates[userId.toUpperCase()] = _playerVoiceStates[userId]!;
+        notifyListeners();
+      }
     });
 
     _subGameStarted = _socketService.onGameStarted.listen((data) {
@@ -435,6 +457,14 @@ class GameProvider with ChangeNotifier {
     _bingoLetters = [false, false, false, false, false];
     _hasClaimedBingo = false;
     _winners.clear();
+    _playerVoiceStates.clear();
+
+    if (_currentRoom != null && _currentUser != null) {
+      _voiceService.joinRoomVoiceChannel(
+        roomId: _currentRoom!.roomId,
+        userId: _currentUser!.userId,
+      );
+    }
 
     notifyListeners();
   }
@@ -529,8 +559,50 @@ class GameProvider with ChangeNotifier {
   void leaveRoom() {
     if (_currentUser == null || _currentRoom == null) return;
     _socketService.leaveRoom(roomId: _currentRoom!.roomId, userId: _currentUser!.userId);
+    _voiceService.leaveChannel();
+    _playerVoiceStates.clear();
     _currentRoom = null;
     notifyListeners();
+  }
+
+  // --- Agora Voice Chat Methods ---
+
+  Future<void> toggleVoiceMic() async {
+    final isMuted = await _voiceService.toggleMic();
+    if (_currentRoom != null && _currentUser != null) {
+      _socketService.emitVoiceStateChange(
+        roomId: _currentRoom!.roomId,
+        userId: _currentUser!.userId,
+        isMicMuted: isMuted,
+        isSpeakerMuted: _voiceService.isSpeakerMuted,
+      );
+    }
+    notifyListeners();
+  }
+
+  Future<void> toggleVoiceSpeaker() async {
+    final isMuted = await _voiceService.toggleSpeaker();
+    if (_currentRoom != null && _currentUser != null) {
+      _socketService.emitVoiceStateChange(
+        roomId: _currentRoom!.roomId,
+        userId: _currentUser!.userId,
+        isMicMuted: _voiceService.isMicMuted,
+        isSpeakerMuted: isMuted,
+      );
+    }
+    notifyListeners();
+  }
+
+  bool isPlayerMicMuted(String userId) {
+    if (_currentUser != null && _currentUser!.userId.toUpperCase() == userId.toUpperCase()) {
+      return _voiceService.isMicMuted;
+    }
+    final state = _playerVoiceStates[userId] ?? _playerVoiceStates[userId.toUpperCase()];
+    return state?['isMicMuted'] ?? false;
+  }
+
+  bool isPlayerSpeaking(String userId) {
+    return _voiceService.isSpeaking(userId);
   }
 
   void startGame() {
@@ -627,7 +699,10 @@ class GameProvider with ChangeNotifier {
     _subLiarsChallenge?.cancel();
     _subLiarsRoulette?.cancel();
     _subBalance?.cancel();
+    _subVoiceState?.cancel();
     _subError?.cancel();
+    _voiceService.removeListener(notifyListeners);
+    _voiceService.leaveChannel();
     _socketService.disconnect();
     super.dispose();
   }

@@ -107,4 +107,40 @@ class ApiService {
     }
     return [];
   }
+
+  // Fetch Agora Config
+  static Future<Map<String, dynamic>?> fetchAgoraConfig() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/api/agora/config'))
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // Fetch Agora RTC Token for a channel and numeric/string UID
+  static Future<Map<String, dynamic>?> fetchAgoraToken({
+    required String channelName,
+    required dynamic uid,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/agora/token'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'channelName': channelName,
+              'uid': uid,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
 }

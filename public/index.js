@@ -2409,18 +2409,21 @@ function renderPlayersStrip() {
     const isTurn = roomStatus === 'playing' && p.userId === currentTurnUserId;
     const isCreator = p.isCreator || p.userId === currentRoom.creatorId;
     const isMe = currentUser && currentUser.userId === p.userId;
-    const voiceState = VoiceChat.voiceStates[p.userId] || {};
+    const voiceState = VoiceChat.voiceStates[p.userId] || VoiceChat.voiceStates[String(p.userId).toUpperCase()] || {};
     const isMuted = isMe
       ? (VoiceChat.isMicMuted || !VoiceChat.localAudioTrack)
       : (voiceState.isMicMuted !== false);
 
+    const numericUid = getNumericAgoraUid(p.userId);
+    const isSpeaking = (VoiceChat.speakingUsers && (VoiceChat.speakingUsers[numericUid] > 5 || (isMe && !isMuted && VoiceChat.speakingUsers[0] > 5)));
+
     return `
-      <div class="player-badge ${isCreator ? 'is-creator' : ''} ${isTurn ? 'is-turn' : ''}">
+      <div class="player-badge ${isCreator ? 'is-creator' : ''} ${isTurn ? 'is-turn' : ''} ${isSpeaking ? 'is-speaking' : ''}">
         <img src="${p.profileImageUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + p.userId}" class="badge-avatar" />
         <span>${escapeHtml(p.name)}</span>
         ${isCreator ? '👑' : ''}
         ${isTurn ? ' 🎲' : ''}
-        ${isMuted ? '<span class="voice-badge muted" title="Mic Muted">🔇</span>' : '<span class="voice-badge live" title="Voice Live">🎙️</span>'}
+        ${isSpeaking ? '<span class="voice-badge live" title="Speaking">🔊</span>' : (isMuted ? '<span class="voice-badge muted" title="Mic Muted">🔇</span>' : '<span class="voice-badge live" title="Voice Live">🎙️</span>')}
       </div>
     `;
   }).join('');
@@ -2511,12 +2514,23 @@ function escapeHtml(str) {
 // ==========================================================================
 // Agora RTC Web SDK In-Room Voice Chat System
 // ==========================================================================
+function getNumericAgoraUid(userId) {
+  if (!userId) return Math.floor(Math.random() * 899999) + 100000;
+  let hash = 0;
+  const clean = String(userId).trim().toUpperCase();
+  for (let i = 0; i < clean.length; i++) {
+    hash = ((hash * 31) + clean.charCodeAt(i)) & 0x7FFFFFFF;
+  }
+  return hash === 0 ? 1 : hash;
+}
+
 const VoiceChat = {
   client: null,
   localAudioTrack: null,
   remoteUsers: {}, // uid -> user
   isMicMuted: false,
   isSpeakerMuted: false,
+  speakingUsers: {}, // uid -> volume
   voiceStates: {}, // userId / socketId -> { isMicMuted, isSpeakerMuted }
 
   async initInRoom(roomId) {
@@ -2556,13 +2570,49 @@ const VoiceChat = {
     this.client.on('user-unpublished', (user, mediaType) => {
       if (mediaType === 'audio') {
         delete this.remoteUsers[user.uid];
+        delete this.speakingUsers[user.uid];
+        renderPlayersStrip();
       }
     });
 
     this.client.on('user-left', (user) => {
       delete this.remoteUsers[user.uid];
+      delete this.speakingUsers[user.uid];
       delete this.voiceStates[user.uid];
       renderPlayersStrip();
+    });
+
+    // Volume indication for live speaking pulses
+    try {
+      this.client.enableAudioVolumeIndicator();
+      this.client.on('volume-indicator', (volumes) => {
+        this.speakingUsers = {};
+        volumes.forEach(v => {
+          if (v.level > 5) {
+            this.speakingUsers[v.uid] = v.level;
+          }
+        });
+        renderPlayersStrip();
+      });
+    } catch (e) {}
+
+    // Handle token expiration renewal
+    this.client.on('token-privilege-will-expire', async () => {
+      try {
+        const formattedRoomId = String(roomId).toUpperCase().trim();
+        const numericUid = getNumericAgoraUid(currentUser && currentUser.userId);
+        const res = await fetch('/api/agora/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelName: formattedRoomId, uid: numericUid })
+        });
+        const data = await res.json();
+        if (data && data.token) {
+          await this.client.renewToken(data.token);
+        }
+      } catch (e) {
+        console.warn('Error renewing Agora token:', e);
+      }
     });
 
     if (socket) {
@@ -2573,37 +2623,44 @@ const VoiceChat = {
           return;
         }
         this.voiceStates[userId || socketId] = { isMicMuted, isSpeakerMuted };
+        if (userId) {
+          this.voiceStates[String(userId).toUpperCase()] = { isMicMuted, isSpeakerMuted };
+        }
         renderPlayersStrip();
       });
     }
 
     const formattedRoomId = String(roomId).toUpperCase().trim();
-    const uid = (currentUser && currentUser.userId) ? String(currentUser.userId) : String(socket ? socket.id : Date.now());
+    const numericUid = getNumericAgoraUid(currentUser && currentUser.userId);
 
-    // 3. Fetch signed Agora RTC token from server
-    let appId = window.AGORA_APP_ID || 'f0122fada995482c807c285791825f72';
+    // 3. Fetch signed Agora RTC token & App ID exclusively from server API
+    let appId = '';
     let token = null;
 
     try {
       const res = await fetch('/api/agora/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channelName: formattedRoomId, uid })
+        body: JSON.stringify({ channelName: formattedRoomId, uid: numericUid })
       });
       const data = await res.json();
-      if (data && data.ok) {
-        if (data.appId) appId = data.appId;
+      if (data && data.ok && data.appId) {
+        appId = String(data.appId).trim();
         token = data.token || null;
+      } else {
+        console.warn('[Agora] Server has not configured AGORA_APP_ID in .env');
+        return;
       }
     } catch (e) {
       console.warn('Agora token fetch error:', e);
+      return;
     }
 
     try {
-      // 4. Join the voice channel named after roomId using signed token
-      await this.client.join(appId, formattedRoomId, token, uid);
+      // 4. Join the voice channel named after roomId using signed token & numeric UID
+      await this.client.join(appId, formattedRoomId, token, numericUid);
 
-      // 5. Create & publish local microphone audio track
+      // 5. Create & publish local microphone audio track with AEC, ANS, AGC
       this.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack({
         AEC: true,
         ANS: true,
@@ -2735,6 +2792,7 @@ const VoiceChat = {
     }
 
     this.remoteUsers = {};
+    this.speakingUsers = {};
     this.voiceStates = {};
   }
 };

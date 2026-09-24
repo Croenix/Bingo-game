@@ -42,6 +42,8 @@ class SocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final _balanceUpdatedController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final _voiceStateUpdatedController =
+      StreamController<Map<String, dynamic>>.broadcast();
   final _errorController = StreamController<String>.broadcast();
 
   Stream<Map<String, dynamic>> get onRoomCreated =>
@@ -72,6 +74,8 @@ class SocketService {
       _liarsRouletteResultController.stream;
   Stream<Map<String, dynamic>> get onBalanceUpdated =>
       _balanceUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onVoiceStateUpdated =>
+      _voiceStateUpdatedController.stream;
   Stream<String> get onError => _errorController.stream;
 
   void connect() {
@@ -177,6 +181,11 @@ class SocketService {
         _balanceUpdatedController.add(Map<String, dynamic>.from(data));
     });
 
+    _socket!.on('voice_state_updated', (data) {
+      if (data is Map)
+        _voiceStateUpdatedController.add(Map<String, dynamic>.from(data));
+    });
+
     _socket!.on('room_error', (data) {
       if (data is Map && data['error'] != null) {
         _errorController.add(data['error'].toString());
@@ -194,6 +203,20 @@ class SocketService {
   }
 
   // --- Emitters ---
+
+  void emitVoiceStateChange({
+    required String roomId,
+    required String userId,
+    required bool isMicMuted,
+    required bool isSpeakerMuted,
+  }) {
+    _socket?.emit('voice_state_change', {
+      'roomId': roomId,
+      'userId': userId,
+      'isMicMuted': isMicMuted,
+      'isSpeakerMuted': isSpeakerMuted,
+    });
+  }
 
   void createRoom({
     required String userId,

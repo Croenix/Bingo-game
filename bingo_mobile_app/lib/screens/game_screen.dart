@@ -150,10 +150,148 @@ class GameScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
+          // Agora Live Voice Chat Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated.withValues(alpha: 0.9),
+              border: const Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(
+              children: [
+                // Agora Voice Live Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: provider.voiceService.isJoined
+                        ? AppColors.emerald.withValues(alpha: 0.15)
+                        : (provider.voiceService.isConnecting
+                            ? AppColors.gold.withValues(alpha: 0.15)
+                            : AppColors.surface),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: provider.voiceService.isJoined
+                          ? AppColors.emerald.withValues(alpha: 0.6)
+                          : (provider.voiceService.isConnecting
+                              ? AppColors.gold.withValues(alpha: 0.6)
+                              : AppColors.border),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: provider.voiceService.isJoined
+                              ? AppColors.emerald
+                              : (provider.voiceService.isConnecting ? AppColors.gold : AppColors.textMuted),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        provider.voiceService.isJoined
+                            ? '🎙️ Agora Voice Live'
+                            : (provider.voiceService.isConnecting ? 'Connecting Voice...' : 'Voice Ready'),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: provider.voiceService.isJoined
+                              ? AppColors.emerald
+                              : (provider.voiceService.isConnecting ? AppColors.gold : AppColors.textMuted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                // Mic Toggle Button
+                InkWell(
+                  onTap: () => provider.toggleVoiceMic(),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: provider.voiceService.isMicMuted
+                          ? AppColors.danger.withValues(alpha: 0.15)
+                          : AppColors.emerald.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: provider.voiceService.isMicMuted
+                            ? AppColors.danger.withValues(alpha: 0.5)
+                            : AppColors.emerald.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          provider.voiceService.isMicMuted ? Icons.mic_off : Icons.mic,
+                          size: 14,
+                          color: provider.voiceService.isMicMuted ? AppColors.danger : AppColors.emerald,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          provider.voiceService.isMicMuted ? 'Mic OFF' : 'Mic ON',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: provider.voiceService.isMicMuted ? AppColors.danger : AppColors.emerald,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Speaker Toggle Button
+                InkWell(
+                  onTap: () => provider.toggleVoiceSpeaker(),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: provider.voiceService.isSpeakerMuted
+                          ? AppColors.danger.withValues(alpha: 0.15)
+                          : AppColors.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: provider.voiceService.isSpeakerMuted
+                            ? AppColors.danger.withValues(alpha: 0.5)
+                            : AppColors.primary.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          provider.voiceService.isSpeakerMuted ? Icons.volume_off : Icons.volume_up,
+                          size: 14,
+                          color: provider.voiceService.isSpeakerMuted ? AppColors.danger : AppColors.primaryLight,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          provider.voiceService.isSpeakerMuted ? 'Audio OFF' : 'Audio ON',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: provider.voiceService.isSpeakerMuted ? AppColors.danger : AppColors.primaryLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Players Horizontal Strip
           Container(
-            height: 76,
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            height: 80,
+            padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: const BoxDecoration(
               color: AppColors.surface,
               border: Border(bottom: BorderSide(color: AppColors.border)),
@@ -168,25 +306,39 @@ class GameScreen extends StatelessWidget {
                 final isCurrentTurn =
                     provider.currentTurnUserId == player.userId;
                 final isPlayerHost = room.creatorId == player.userId;
+                final isSpeaking = provider.isPlayerSpeaking(player.userId);
+                final isMicMuted = provider.isPlayerMicMuted(player.userId);
 
                 return Column(
                   children: [
                     Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        Container(
-                          width: 40,
-                          height: 40,
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 42,
+                          height: 42,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: isCurrentTurn
+                              color: isSpeaking
                                   ? AppColors.emerald
-                                  : (isPlayerHost
-                                        ? AppColors.gold
-                                        : AppColors.border),
-                              width: isCurrentTurn ? 2.5 : 1.5,
+                                  : (isCurrentTurn
+                                      ? AppColors.primaryLight
+                                      : (isPlayerHost
+                                          ? AppColors.gold
+                                          : AppColors.border)),
+                              width: isSpeaking ? 3.0 : (isCurrentTurn ? 2.5 : 1.5),
                             ),
+                            boxShadow: isSpeaking
+                                ? [
+                                    BoxShadow(
+                                      color: AppColors.emerald.withValues(alpha: 0.6),
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    )
+                                  ]
+                                : null,
                             color: AppColors.surfaceElevated,
                           ),
                           alignment: Alignment.center,
@@ -206,6 +358,26 @@ class GameScreen extends StatelessWidget {
                             right: -2,
                             child: Text('👑', style: TextStyle(fontSize: 12)),
                           ),
+                        // Voice mic mute/live indicator badge
+                        Positioned(
+                          bottom: -2,
+                          right: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: isMicMuted ? AppColors.surfaceElevated : AppColors.surface,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: isMicMuted ? AppColors.danger : AppColors.emerald,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              isMicMuted ? '🔇' : (isSpeaking ? '🔊' : '🎙️'),
+                              style: const TextStyle(fontSize: 9),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -214,9 +386,11 @@ class GameScreen extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: isCurrentTurn
+                        color: isSpeaking
                             ? AppColors.emerald
-                            : AppColors.textSecondary,
+                            : (isCurrentTurn
+                                ? AppColors.primaryLight
+                                : AppColors.textSecondary),
                       ),
                     ),
                   ],
