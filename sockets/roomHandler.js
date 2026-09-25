@@ -929,6 +929,11 @@ function registerRoomHandlers(io, socket) {
       room.markModified('gameData');
       await room.save();
 
+      socket.emit('liars_hand_updated', {
+        roomId: formattedRoomId,
+        myHand: remainingHand
+      });
+
       io.to(formattedRoomId).emit('liars_cards_played', {
         roomId: formattedRoomId,
         playedBy: { userId: formattedUserId, name: playerName },
@@ -1091,6 +1096,12 @@ function registerRoomHandlers(io, socket) {
       alivePlayers.forEach((p, idx) => {
         const hand = fullDeck.slice(idx * 10, (idx + 1) * 10);
         room.gameData.playerHands[p.userId] = hand;
+        if (p.socketId) {
+          io.to(p.socketId).emit('liars_hand_updated', {
+            roomId: formattedRoomId,
+            myHand: hand
+          });
+        }
       });
 
       room.gameData.tableRank = tableRank;

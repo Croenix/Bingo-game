@@ -36,6 +36,8 @@ class SocketService {
       StreamController<Map<String, dynamic>>.broadcast();
   final _liarsCardsPlayedController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final _liarsHandUpdatedController =
+      StreamController<Map<String, dynamic>>.broadcast();
   final _liarsChallengeResolvedController =
       StreamController<Map<String, dynamic>>.broadcast();
   final _liarsRouletteResultController =
@@ -68,6 +70,8 @@ class SocketService {
       _sosGameEndedController.stream;
   Stream<Map<String, dynamic>> get onLiarsCardsPlayed =>
       _liarsCardsPlayedController.stream;
+  Stream<Map<String, dynamic>> get onLiarsHandUpdated =>
+      _liarsHandUpdatedController.stream;
   Stream<Map<String, dynamic>> get onLiarsChallengeResolved =>
       _liarsChallengeResolvedController.stream;
   Stream<Map<String, dynamic>> get onLiarsRouletteResult =>
@@ -175,6 +179,12 @@ class SocketService {
     _socket!.on('liars_cards_played', (data) {
       if (data is Map) {
         _liarsCardsPlayedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    _socket!.on('liars_hand_updated', (data) {
+      if (data is Map) {
+        _liarsHandUpdatedController.add(Map<String, dynamic>.from(data));
       }
     });
 

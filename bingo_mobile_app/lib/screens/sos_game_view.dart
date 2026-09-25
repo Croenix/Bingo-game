@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/game_provider.dart';
@@ -16,32 +17,35 @@ class SosGameView extends StatelessWidget {
     final grid = provider.sosGrid;
 
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         children: [
           // Turn Banner
           Container(
             margin: const EdgeInsets.only(bottom: 14),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: provider.isMyTurn
                   ? AppColors.emerald.withValues(alpha: 0.15)
                   : AppColors.surfaceElevated,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: provider.isMyTurn ? AppColors.emerald : AppColors.border,
+                width: provider.isMyTurn ? 1.5 : 1,
               ),
+              boxShadow: provider.isMyTurn
+                  ? AppColors.emeraldGlow(opacity: 0.3, blur: 12)
+                  : null,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Container(
-                  width: 10,
-                  height: 10,
+                  width: 8,
+                  height: 8,
                   decoration: BoxDecoration(
-                    color: provider.isMyTurn
-                        ? AppColors.emerald
-                        : AppColors.accent,
+                    color: provider.isMyTurn ? AppColors.emerald : AppColors.accent,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -49,15 +53,13 @@ class SosGameView extends StatelessWidget {
                 Text(
                   isPlaying
                       ? (provider.isMyTurn
-                            ? '🎯 YOUR TURN! Place your letter on the grid'
-                            : 'Waiting for ${provider.currentTurnName ?? "Opponent"}\'s turn...')
+                            ? '🎯 YOUR TURN! Place S or O on the grid'
+                            : 'Waiting for ${provider.currentTurnName ?? "Opponent"}\'s move...')
                       : (isFinished
-                            ? '🏁 Game Finished!'
-                            : 'Waiting for host to start...'),
-                  style: TextStyle(
-                    color: provider.isMyTurn
-                        ? AppColors.emerald
-                        : AppColors.textPrimary,
+                            ? '🏁 GAME OVER! Check Final Scores'
+                            : 'Waiting for host to launch battle...'),
+                  style: GoogleFonts.outfit(
+                    color: provider.isMyTurn ? AppColors.emerald : AppColors.textPrimary,
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
                   ),
@@ -68,12 +70,13 @@ class SosGameView extends StatelessWidget {
 
           // Scoreboard Card
           Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              borderRadius: BorderRadius.circular(18),
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(color: AppColors.border),
+              boxShadow: AppColors.softCardShadow,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -84,29 +87,36 @@ class SosGameView extends StatelessWidget {
                   children: [
                     Text(
                       p.name,
-                      style: TextStyle(
+                      style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: isCurrent
-                            ? AppColors.accent
-                            : AppColors.textSecondary,
+                        color: isCurrent ? AppColors.accent : AppColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 4,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
                         gradient: isCurrent ? AppColors.sosGradient : null,
-                        color: isCurrent ? null : AppColors.surface,
-                        borderRadius: BorderRadius.circular(12),
+                        color: isCurrent ? null : AppColors.surfaceElevated,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isCurrent ? AppColors.accent : AppColors.borderSubtle,
+                        ),
+                        boxShadow: isCurrent
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.emerald.withValues(alpha: 0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Text(
                         '$score SOS',
-                        style: const TextStyle(
-                          fontSize: 16,
+                        style: GoogleFonts.outfit(
+                          fontSize: 17,
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
                         ),
@@ -120,25 +130,30 @@ class SosGameView extends StatelessWidget {
 
           // Letter Picker (S / O)
           Container(
-            margin: const EdgeInsets.only(bottom: 16),
+            margin: const EdgeInsets.only(bottom: 14),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.border),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text(
-                  'Choose Letter: ',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                Text(
+                  'ACTIVE LETTER:',
+                  style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 _letterChoiceButton('S', provider.selectedSosLetter == 'S', () {
                   provider.selectSosLetter('S');
                 }),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 _letterChoiceButton('O', provider.selectedSosLetter == 'O', () {
                   provider.selectSosLetter('O');
                 }),
@@ -146,22 +161,23 @@ class SosGameView extends StatelessWidget {
             ),
           ),
 
-          // SOS Grid
+          // Tactical Grid
           AspectRatio(
             aspectRatio: 1.0,
             child: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.border, width: 2),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: AppColors.border, width: 1.5),
+                boxShadow: AppColors.softCardShadow,
               ),
               child: GridView.builder(
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: size,
-                  mainAxisSpacing: 6,
-                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
                 ),
                 itemCount: size * size,
                 itemBuilder: (context, index) {
@@ -189,28 +205,33 @@ class SosGameView extends StatelessWidget {
                       }
                     },
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
+                      duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
-                        color: isOccupied
-                            ? AppColors.surfaceElevated
-                            : AppColors.surface,
-                        borderRadius: BorderRadius.circular(10),
+                        color: isOccupied ? AppColors.surfaceElevated : AppColors.surfaceElevated.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(size == 3 ? 16 : 12),
                         border: Border.all(
                           color: isOccupied
-                              ? AppColors.accent
-                              : AppColors.border,
+                              ? (displayLetter == 'S' ? AppColors.accent : AppColors.emerald)
+                              : AppColors.borderSubtle,
                           width: isOccupied ? 2 : 1,
                         ),
+                        boxShadow: isOccupied
+                            ? [
+                                BoxShadow(
+                                  color: (displayLetter == 'S' ? AppColors.accent : AppColors.emerald).withValues(alpha: 0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         displayLetter,
-                        style: TextStyle(
-                          fontSize: size == 3 ? 32 : 22,
+                        style: GoogleFonts.outfit(
+                          fontSize: size == 3 ? 36 : 22,
                           fontWeight: FontWeight.w900,
-                          color: displayLetter == 'S'
-                              ? AppColors.accent
-                              : AppColors.gold,
+                          color: displayLetter == 'S' ? AppColors.accent : AppColors.emerald,
                         ),
                       ),
                     ),
@@ -233,22 +254,31 @@ class SosGameView extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 44,
-        height: 44,
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
           gradient: isSelected ? AppColors.sosGradient : null,
           color: isSelected ? null : AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected ? AppColors.accent : AppColors.border,
             width: isSelected ? 2 : 1,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.emerald.withValues(alpha: 0.45),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : null,
         ),
         alignment: Alignment.center,
         child: Text(
           letter,
-          style: TextStyle(
-            fontSize: 20,
+          style: GoogleFonts.outfit(
+            fontSize: 22,
             fontWeight: FontWeight.w900,
             color: isSelected ? Colors.white : AppColors.textSecondary,
           ),

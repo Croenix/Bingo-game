@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../theme/app_theme.dart';
@@ -33,9 +34,9 @@ class _JoinRoomDialogState extends State<JoinRoomDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: AppColors.surfaceElevated,
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         side: const BorderSide(color: AppColors.border),
       ),
       title: Row(
@@ -43,13 +44,22 @@ class _JoinRoomDialogState extends State<JoinRoomDialog> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(10),
+              gradient: AppColors.cyberGradient,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.accent.withValues(alpha: 0.4),
+                  blurRadius: 10,
+                ),
+              ],
             ),
-            child: const Icon(Icons.key, color: Colors.white, size: 22),
+            child: const Icon(Icons.vpn_key_rounded, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
-          const Text('Join Game Room', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(
+            'Join Game Arena',
+            style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
         ],
       ),
       content: Form(
@@ -58,26 +68,44 @@ class _JoinRoomDialogState extends State<JoinRoomDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Enter 6-Character Room Code:', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 8),
+            Text(
+              'ROOM CODE',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+                letterSpacing: 0.8,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 6),
             TextFormField(
               controller: _codeController,
               textCapitalization: TextCapitalization.characters,
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter a valid room code' : null,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 1.5),
               decoration: const InputDecoration(
-                hintText: 'e.g. VIP123 or ABCDEF',
-                prefixIcon: Icon(Icons.tag, color: AppColors.textMuted),
+                hintText: 'e.g. VIP123',
+                prefixIcon: Icon(Icons.tag_rounded, color: AppColors.accent, size: 20),
               ),
             ),
-            const SizedBox(height: 14),
-            const Text('Room Password (if protected):', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
+            Text(
+              'ROOM PASSWORD (IF PROTECTED)',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w800,
+                fontSize: 11,
+                letterSpacing: 0.8,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 6),
             TextFormField(
               controller: _passwordController,
               obscureText: true,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
               decoration: const InputDecoration(
-                hintText: 'Leave empty if public',
-                prefixIcon: Icon(Icons.lock_outline, color: AppColors.textMuted),
+                hintText: 'Leave empty if public match',
+                prefixIcon: Icon(Icons.lock_outline_rounded, color: AppColors.gold, size: 20),
               ),
             ),
           ],
@@ -86,20 +114,45 @@ class _JoinRoomDialogState extends State<JoinRoomDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.outfit(color: AppColors.textSecondary, fontWeight: FontWeight.w700),
+          ),
         ),
-        ElevatedButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              final provider = Provider.of<GameProvider>(context, listen: false);
-              provider.joinRoom(
-                roomId: _codeController.text.trim().toUpperCase(),
-                password: _passwordController.text.trim(),
-              );
-              Navigator.pop(context);
-            }
-          },
-          child: const Text('Join Arena 🎮'),
+        Container(
+          decoration: BoxDecoration(
+            gradient: AppColors.cyberGradient,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accent.withValues(alpha: 0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            onPressed: () {
+              if (_formKey.currentState!.validate()) {
+                final provider = Provider.of<GameProvider>(context, listen: false);
+                provider.joinRoom(
+                  roomId: _codeController.text.trim().toUpperCase(),
+                  password: _passwordController.text.trim(),
+                );
+                Navigator.pop(context);
+              }
+            },
+            child: Text(
+              'ENTER ARENA 🎮',
+              style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w900),
+            ),
+          ),
         ),
       ],
     );

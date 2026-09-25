@@ -785,6 +785,19 @@ function initSocket() {
     if (window.confetti) confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
   });
 
+  socket.on('liars_hand_updated', (data) => {
+    if (currentRoom) {
+      if (!currentRoom.gameData) currentRoom.gameData = {};
+      if (!currentRoom.gameData.playerHands) currentRoom.gameData.playerHands = {};
+      if (currentUser && data && data.myHand) {
+        currentRoom.gameData.playerHands[currentUser.userId] = data.myHand;
+      }
+    }
+    selectedCardIndexes.clear();
+    renderLiarsDeckHand();
+    renderLiarsView();
+  });
+
   socket.on('liars_cards_played', (data) => {
     const { playedBy, count, nextTurnUserId: nextId, nextTurnName: nextName, tableRank } = data;
     currentTurnUserId = nextId;
@@ -801,9 +814,11 @@ function initSocket() {
       currentRoom.gameData.lastPlay = playRecord;
     }
 
+    selectedCardIndexes.clear();
     showToast(`🎴 ${playedBy.name} played ${count} card(s) face-down!`, 'info');
     SoundFX.playTileClick();
     updateTurnStateUI();
+    renderLiarsDeckHand();
     renderLiarsView();
 
     if (currentUser && currentUser.userId === currentTurnUserId) {
@@ -948,7 +963,9 @@ function initSocket() {
         }
       }
 
+      selectedCardIndexes.clear();
       updateTurnStateUI();
+      renderLiarsDeckHand();
       renderLiarsView();
     }, 1500);
   });
@@ -1915,7 +1932,12 @@ function renderLiarsView() {
   const btnCallDeck = document.getElementById('btnCallLiarDeck');
   const lastPlay = currentRoom.gameData && currentRoom.gameData.lastPlay;
 
-  if (btnPlay) btnPlay.disabled = !isPlaying || !isMyTurn || selectedCardIndexes.size === 0;
+  if (btnPlay) {
+    btnPlay.disabled = !isPlaying || !isMyTurn || selectedCardIndexes.size === 0;
+    btnPlay.textContent = selectedCardIndexes.size > 0
+      ? `🎴 PLAY (${selectedCardIndexes.size}) SELECTED CARD${selectedCardIndexes.size > 1 ? 'S' : ''}`
+      : '🎴 PLAY SELECTED CARDS';
+  }
   if (btnCallDeck) btnCallDeck.disabled = !isPlaying || !isMyTurn || !lastPlay;
 
   const btnPlaceBid = document.getElementById('btnPlaceBid');
@@ -1938,7 +1960,7 @@ function renderLiarsDeckHand() {
   container.innerHTML = '';
 
   if (myHand.length === 0) {
-    container.innerHTML = '<div class="sub-text">No cards in hand</div>';
+    container.innerHTML = '<div class="sub-text">No cards left in your hand</div>';
     return;
   }
 
@@ -2066,7 +2088,20 @@ function handleLiarsPlayCards() {
     cardIndexes: indexes
   });
 
+  // Prune played cards from local hand immediately
+  if (currentRoom && currentRoom.gameData && currentRoom.gameData.playerHands) {
+    const myHand = currentRoom.gameData.playerHands[currentUser.userId] || [];
+    const sorted = [...indexes].sort((a, b) => b - a);
+    sorted.forEach(idx => {
+      if (idx >= 0 && idx < myHand.length) {
+        myHand.splice(idx, 1);
+      }
+    });
+  }
+
   selectedCardIndexes.clear();
+  renderLiarsDeckHand();
+  renderLiarsView();
 }
 
 function handleLiarsCallLiarDeck() {

@@ -73,6 +73,7 @@ class GameProvider with ChangeNotifier {
   StreamSubscription? _subSosMove;
   StreamSubscription? _subSosEnded;
   StreamSubscription? _subLiarsPlayed;
+  StreamSubscription? _subLiarsHandUpdated;
   StreamSubscription? _subLiarsChallenge;
   StreamSubscription? _subLiarsRoulette;
   StreamSubscription? _subBalance;
@@ -405,6 +406,15 @@ class GameProvider with ChangeNotifier {
       notifyListeners();
     });
 
+    // Liar's Bar Hand Updated
+    _subLiarsHandUpdated = _socketService.onLiarsHandUpdated.listen((data) {
+      if (data['myHand'] != null && data['myHand'] is List) {
+        _liarsMyHand = List<String>.from(data['myHand']);
+        _liarsSelectedCardIndices.clear();
+        notifyListeners();
+      }
+    });
+
     // Liar's Bar Challenge Resolved
     _subLiarsChallenge = _socketService.onLiarsChallengeResolved.listen((data) {
       _liarsRevealedCards = List<String>.from(data['revealedCards'] ?? []);
@@ -415,13 +425,31 @@ class GameProvider with ChangeNotifier {
     // Liar's Bar Roulette Result
     _subLiarsRoulette = _socketService.onLiarsRouletteResult.listen((data) {
       final isEliminated = data['isEliminated'] == true;
-      final targetUserId = data['targetUserId']?.toString();
+      final targetUserId = data['targetUserId']?.toString() ?? data['userId']?.toString();
       if (targetUserId == _currentUser?.userId && isEliminated) {
         _liarsIsAlive = false;
       }
       _liarsPendingRoulette = null;
       _currentTurnUserId = data['nextTurnUserId']?.toString();
       _currentTurnName = data['nextTurnName']?.toString();
+
+      final newRound = data['newRound'];
+      if (newRound != null && newRound is Map) {
+        _liarsTableRank = newRound['tableRank']?.toString() ?? _liarsTableRank;
+        _currentTurnUserId = newRound['currentTurnUserId']?.toString() ?? _currentTurnUserId;
+        _currentTurnName = newRound['currentTurnName']?.toString() ?? _currentTurnName;
+        _liarsCenterPileCount = 0;
+        _liarsLastPlay = null;
+        _liarsRevealedCards.clear();
+        _liarsSelectedCardIndices.clear();
+        if (newRound['playerHands'] != null && _currentUser != null) {
+          final hand = newRound['playerHands'][_currentUser!.userId];
+          if (hand != null && hand is List) {
+            _liarsMyHand = List<String>.from(hand);
+          }
+        }
+      }
+
       notifyListeners();
     });
 
@@ -444,6 +472,16 @@ class GameProvider with ChangeNotifier {
   void _handleRoomJoined(Map<String, dynamic> data) {
     if (data['room'] != null) {
       _currentRoom = RoomModel.fromJson(Map<String, dynamic>.from(data['room']));
+      final gameData = _currentRoom?.gameData;
+      if (_currentRoom?.gameType == 'liars_bar' && gameData != null) {
+        _liarsTableRank = gameData['tableRank']?.toString() ?? "KING'S TABLE";
+        if (gameData['playerHands'] != null && _currentUser != null) {
+          final hand = gameData['playerHands'][_currentUser!.userId];
+          if (hand != null && hand is List) {
+            _liarsMyHand = List<String>.from(hand);
+          }
+        }
+      }
     }
     if (data['myBingoCard'] != null && data['myBingoCard'] is List) {
       _myBingoCard = (data['myBingoCard'] as List).map((e) => (e as num).toInt()).toList();
@@ -696,6 +734,7 @@ class GameProvider with ChangeNotifier {
     _subSosMove?.cancel();
     _subSosEnded?.cancel();
     _subLiarsPlayed?.cancel();
+    _subLiarsHandUpdated?.cancel();
     _subLiarsChallenge?.cancel();
     _subLiarsRoulette?.cancel();
     _subBalance?.cancel();

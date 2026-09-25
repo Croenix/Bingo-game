@@ -11,6 +11,7 @@ class ChallengeModel {
   final String gradientStart;
   final String gradientEnd;
   final String icon;
+  final String coverImage;
   final bool isActive;
 
   ChallengeModel({
@@ -26,6 +27,7 @@ class ChallengeModel {
     this.gradientStart = '#6366F1',
     this.gradientEnd = '#8B5CF6',
     this.icon = '🎯',
+    this.coverImage = '',
     this.isActive = true,
   });
 
@@ -43,6 +45,7 @@ class ChallengeModel {
       gradientStart: json['gradientStart'] ?? '#6366F1',
       gradientEnd: json['gradientEnd'] ?? '#8B5CF6',
       icon: json['icon'] ?? '🎯',
+      coverImage: json['coverImage'] ?? json['imageUrl'] ?? json['backdropUrl'] ?? '',
       isActive: json['isActive'] != false,
     );
   }
